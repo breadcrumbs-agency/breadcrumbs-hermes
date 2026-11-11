@@ -1,0 +1,18 @@
+# Two dependencies: breadcrumbs-common (the store, the verbs, the servers; it brings google-crc32c) and
+# breadcrumbs-spacegraph (the viewers). Hermes's plugin installer reads them as packages for its shared environment: it
+# asks for consent, and an enable installs them there. With a [build-system] table or an extra, Hermes would also
+# build the plugin itself into that environment, so this file declares neither (tests/test_plugin_entry.py).
+[project]
+name = "breadcrumbs-hermes"
+version = "0.4.1"
+description = "Content-addressed breadcrumb memory for Hermes: exact provenance, zoom levels 0..1, steady-state context."
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = ["breadcrumbs-common>=0.4.1,<0.5", "breadcrumbs-spacegraph>=0.4.1,<0.5"]
+
+[tool.setuptools]
+packages = ["breadcrumbs_hermes"]
+
+[tool.setuptools.package-data]
+breadcrumbs_hermes = ["skills/*/SKILL.md"]
