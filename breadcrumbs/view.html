@@ -1,0 +1,1660 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>breadcrumbs</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0b0d;--fg:#e6e6ea;--dim:#8a8a94;--accent:#5b9cff;
+  --panel:#111114;--card:#151519;--line:#24242a;--line2:#34343c;--faint:#55555f;
+  --sans:-apple-system,BlinkMacSystemFont,Inter,"Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.45 var(--sans);overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
+/* the chrome follows the session graph of opencode_spacegraph: a toolbar, a path row, a side panel */
+#bar{position:fixed;top:0;left:0;right:0;height:42px;display:flex;align-items:center;gap:2px;padding:0 10px;
+  background:var(--panel);border-bottom:1px solid var(--line);z-index:5}
+#brand{display:flex;align-items:center;gap:8px;font-weight:600;margin-right:12px;white-space:nowrap}
+#brand b{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:12px;
+  background:linear-gradient(135deg,#5b9cff,#9b8cff)}
+#brand b svg{width:13px;height:13px}  /* the mark: four crumbs that climb */
+.tool{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;color:var(--dim);
+  white-space:nowrap;user-select:none;border:1px solid transparent;cursor:pointer}
+.tool:hover{background:rgba(255,255,255,.05);color:var(--fg)}
+.tool:has(input:checked){color:var(--fg);background:rgba(91,156,255,.13);border-color:rgba(91,156,255,.35)}
+.tool input{display:none}
+svg.i{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#lay{display:flex;gap:2px;margin-left:8px;padding-left:8px;border-left:1px solid var(--line)}
+@media (max-width:1180px){#lay .tool span{display:none}}
+#agent{margin-left:auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#f6c177;font-size:12px;padding-left:12px}
+#agent:not(:empty)::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#f6c177;
+  box-shadow:0 0 8px #f6c177;margin-right:8px;vertical-align:1px}
+#find{display:flex;align-items:center;gap:7px;height:28px;width:15em;padding:0 9px;margin-left:10px;flex:none;
+  border:1px solid var(--line2);border-radius:7px;background:var(--bg);color:var(--dim)}
+#find:focus-within{border-color:rgba(91,156,255,.6)}
+#q{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--fg);font:inherit}
+#trail{position:fixed;top:42px;left:0;right:0;height:30px;display:flex;align-items:center;padding:0 14px;z-index:4;
+  border-bottom:1px solid var(--line);background:var(--bg);color:var(--dim);font-size:12.5px;white-space:nowrap;overflow:hidden}
+#trail a{cursor:pointer;color:var(--dim);overflow:hidden;text-overflow:ellipsis}
+#trail a:last-child{color:var(--fg)}#trail a:hover{color:var(--accent)}
+#trail i{font-style:normal;color:var(--faint);padding:0 8px}
+#trail{padding-right:470px}
+#legend{position:fixed;top:42px;right:14px;height:30px;display:flex;align-items:center;gap:12px;z-index:4;font-size:11.5px;color:var(--dim)}
+#legend span{display:inline-flex;align-items:center;gap:5px}
+#legend span::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--c)}
+#msg{position:fixed;bottom:0;left:0;right:0;height:24px;line-height:24px;padding:0 14px;color:var(--dim);background:var(--panel);
+  border-top:1px solid var(--line);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:5}
+#tip{position:fixed;pointer-events:none;padding:7px 9px;border:1px solid var(--line2);background:var(--card);border-radius:7px;
+  display:none;max-width:64ch;white-space:pre-wrap;z-index:9;font:12px/1.45 var(--mono);box-shadow:0 8px 24px rgba(0,0,0,.45)}
+canvas{display:block;width:100vw;height:100vh}
+.kick{margin:14px 0 6px;color:var(--dim);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+.tag{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 7px;border-radius:5px;font-size:11px;flex:none;
+  color:var(--fg);background:color-mix(in srgb,var(--c) 16%,transparent);border:1px solid color-mix(in srgb,var(--c) 45%,transparent)}
+.tag::before{content:"";width:6px;height:6px;border-radius:2px;background:var(--c)}
+.btn{height:28px;padding:0 12px;border-radius:7px;border:1px solid var(--line2);background:var(--card)}
+.btn:hover{border-color:rgba(91,156,255,.6)}
+/* the side panel: the text of the crumb or the event that was picked */
+#side{position:fixed;top:72px;right:0;width:380px;bottom:24px;display:none;flex-direction:column;z-index:4;
+  background:var(--panel);border-left:1px solid var(--line)}
+#side.on{display:flex}
+#side header{display:flex;align-items:center;gap:8px;padding:12px 14px 6px}
+#side .x{margin-left:auto;width:24px;height:24px;border-radius:6px;color:var(--dim);text-align:center;font-size:16px;line-height:24px}
+#side .x:hover{background:rgba(255,255,255,.06);color:var(--fg)}
+#side h3{margin:0;padding:0 14px 10px;font:600 14px/1.35 var(--sans);border-bottom:1px solid var(--line)}
+#sbody{flex:1;overflow:auto;padding:0 14px 14px}
+#sbody pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.55 var(--mono);color:var(--fg)}
+#sbody .note{margin-top:12px;color:#f6c177;font-size:12px}
+#side footer{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+/* the context box: the Gantt (crumbs by user turns) and the Venn (what the context held after one event) */
+#ctx{position:fixed;left:0;right:0;bottom:24px;height:44vh;display:none;z-index:4;background:var(--panel);border-top:1px solid var(--line)}
+#ctx.on{display:flex}
+#gantt{flex:1;min-width:0;overflow:auto}
+#venn{width:360px;flex:none;border-left:1px solid var(--line);overflow:auto;padding:0 14px 14px}
+.gh,.gr{display:grid}
+.gh{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--line)}
+.gh>div{padding:9px 10px 8px;border-left:1px solid var(--line);min-width:0}
+.gh .corner{position:sticky;left:0;z-index:1;background:var(--panel);border-left:0;display:flex;flex-direction:column;justify-content:space-between}
+.legend{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend span::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--c)}
+.who{font-size:10.5px;color:var(--dim);letter-spacing:.07em;text-transform:uppercase;font-weight:600}
+.said{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.5px;margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;height:22px;padding:0 7px;border-radius:6px;font-size:11.5px;
+  background:color-mix(in srgb,var(--c) 11%,var(--card));border:1px solid color-mix(in srgb,var(--c) 38%,transparent)}
+.chip b{font-weight:600;color:var(--c);white-space:nowrap}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chip:hover{border-color:var(--c)}
+.chip.on{background:color-mix(in srgb,var(--c) 28%,var(--card));border-color:var(--c);box-shadow:0 0 0 1px var(--c)}
+.chip.cut{border-style:dashed}
+.gr{border-bottom:1px solid rgba(255,255,255,.035);cursor:pointer}
+.gr:hover{background:rgba(255,255,255,.03)}
+.gl{position:sticky;left:0;z-index:1;display:flex;align-items:center;gap:8px;height:26px;padding:0 10px;background:var(--panel);min-width:0}
+.gr:hover .gl{background:#17171b}
+.gl .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.gk{flex:none;width:44px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--c)}
+.track{position:relative;grid-column:2/-1}
+.bar{position:absolute;top:3px;bottom:3px;border-radius:5px;padding:0 7px;display:flex;align-items:center;overflow:hidden;
+  font:11px/1 var(--mono);white-space:nowrap;border:1px solid color-mix(in srgb,var(--c) 70%,transparent)}
+.bar:hover{border-color:var(--fg)}
+.bar.on{box-shadow:0 0 0 1.5px var(--fg)}
+.cutline{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#e64553;opacity:.85}
+.vh{position:sticky;top:0;z-index:1;background:var(--panel);padding:2px 0 8px;border-bottom:1px solid var(--line)}
+.what{display:flex;align-items:center;gap:7px;min-width:0;font-size:13px}
+.what span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vh .note{margin-top:5px;color:#f6c177;font-size:12px}
+.frame{margin-top:12px;padding:8px;border-radius:8px;border:1px solid color-mix(in srgb,var(--c) 45%,transparent);
+  background:color-mix(in srgb,var(--c) 7%,transparent)}
+.frame header{display:flex;align-items:center;gap:6px;margin:0 2px 7px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+.frame header i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.card{display:flex;gap:7px;align-items:flex-start;padding:6px 8px;border-radius:6px;border:1px solid var(--line2);background:var(--card);min-width:0}
+.card:hover{border-color:var(--accent)}
+.card .k{flex:none;width:16px;height:16px;border-radius:4px;display:grid;place-items:center;margin-top:1px;
+  font:600 9.5px var(--sans);color:#0b0b0d;background:var(--c)}
+.card .t{font:11.5px/1.35 var(--mono);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.empty{color:var(--dim);margin-top:14px}
+/* the size of the context (ACE's ace.log): a line, candles, a pie and the totals; the toolbar's Size toggle shows it in place of the Gantt */
+#ctx.trk{height:66vh}
+#ctx.trk #gantt,#ctx.trk #venn{display:none}
+#trk{display:none;flex:1;min-width:0;overflow:auto;padding:10px 14px 16px}
+#ctx.trk #trk{display:block}
+.tkh{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:10px}
+.tkh h4{margin:0;font-size:13px;font-weight:600}
+.tkh .sub{color:var(--dim);font-size:12px;min-width:0}
+.pills{display:inline-flex;gap:4px}
+.pill{height:24px;padding:0 10px;border-radius:12px;border:1px solid var(--line2);color:var(--dim);font-size:12px}
+.pill:hover{border-color:var(--accent);color:var(--fg)}
+.pill.on{background:color-mix(in srgb,var(--accent) 22%,var(--card));border-color:var(--accent);color:var(--fg)}
+.tkn{color:#f6c177;font-size:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:8px;margin-bottom:10px}
+.tile{padding:8px 10px;border-radius:8px;border:1px solid var(--line2);background:var(--card)}
+.tile .v{font-size:20px;font-weight:600;line-height:1.15;font-variant-numeric:proportional-nums}
+.tile .l{font-size:11px;color:var(--dim);margin-top:2px}
+.tk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tk.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tk.c1{grid-template-columns:minmax(0,1fr)}
+.pn{position:relative;padding:9px 12px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--card);min-width:0}
+.pn.w2{grid-column:span 2}
+.tk.c2 .pn.w2,.tk.c1 .pn.w2{grid-column:1/-1}
+.pn h5{margin:0 0 1px;font-size:12px;font-weight:600}
+.pn .s{color:var(--dim);font-size:11.5px;margin-bottom:6px}
+.pn svg{display:block;max-width:100%;overflow:visible}
+.pn text{font:11px var(--sans);fill:var(--dim)}
+.pn text.v{fill:var(--fg)}
+.key{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:11px;color:var(--dim);margin-top:4px}
+.key span{display:inline-flex;align-items:center;gap:5px}
+.key i{display:inline-block;width:12px;height:2px;background:var(--c);border-radius:1px}
+.key i.d{width:8px;height:8px;border-radius:50%}
+.key i.b{width:8px;height:10px;border-radius:2px}
+.key i.r{width:8px;height:8px;border-radius:50%;background:none;border:2px solid var(--c);box-sizing:border-box}
+.tkt{position:absolute;display:none;pointer-events:none;z-index:5;padding:6px 8px;border:1px solid var(--line2);background:var(--panel);
+  border-radius:7px;font-size:11.5px;line-height:1.4;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.tkt div:first-child{font-weight:600}
+.pie{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.pie table{border-collapse:collapse;font-size:11.5px}
+.pie td{padding:2px 8px 2px 0}
+.pie td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--fg)}
+.pie td i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;background:var(--c)}
+.rowb{display:grid;grid-template-columns:92px minmax(0,1fr) 44px;align-items:center;gap:6px;height:22px;cursor:pointer;border-radius:5px}
+.rowb:hover{background:rgba(255,255,255,.04)}
+.rowb.on{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.rowb .id{font:11px var(--mono);color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rowb .n{font-size:11px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+.rowb .bar2{display:flex;gap:2px;height:10px}
+.rowb .bar2 i{display:block;height:100%;background:var(--c);border-radius:0 3px 3px 0}
+.tk details{margin-top:8px;font-size:11.5px;color:var(--dim)}
+.tk table.tbl{border-collapse:collapse;margin-top:4px}
+.tk table.tbl td,.tk table.tbl th{padding:1px 10px 1px 0;text-align:right;font-weight:400;font-variant-numeric:tabular-nums}
+.tk table.tbl th{color:var(--dim)}
+</style></head><body>
+<div id="bar">
+  <div id="brand"><b><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="#0b0b0d"><circle cx="12" cy="44" r="5"/><circle cx="26" cy="34" r="5"/><circle cx="38" cy="22" r="5.5"/><circle cx="48" cy="10" r="6"/></g></svg></b>breadcrumbs</div>
+  <button class="tool" id="home" title="All sessions"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Overview</button>
+  <label class="tool"><input type="checkbox" id="ctxon"><svg class="i" viewBox="0 0 16 16"><path d="M2 4h7M5 8h9M2 12h5"/></svg>Context</label>
+  <label class="tool"><input type="checkbox" id="trkon"><svg class="i" viewBox="0 0 16 16"><path d="M2 13V3M2 13h12M4 10l3-3 2 2 4-5"/></svg>Size</label>
+  <label class="tool"><input type="checkbox" id="follow"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>Follow the agent</label>
+  <div id="lay"></div>
+  <div id="agent"></div>
+  <div id="find"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><input id="q" placeholder="Find in memory"></div>
+</div>
+<div id="trail"></div><div id="legend" title="The phase of each tool card, by tool name"></div>
+<aside id="side"><header><span class="tag" id="skind"></span><button class="x" id="sclose" title="Close">&times;</button></header>
+  <h3 id="stitle"></h3><div id="sbody"></div><footer><button class="btn" id="smap">Show in the map</button></footer></aside>
+<div id="ctx"><div id="gantt"></div><div id="venn"></div><div id="trk"></div></div>
+<div id="tip"></div><div id="msg"></div><canvas id="g"></canvas>
+<script>
+"use strict";
+// The memory as a zoomable map. The design follows SpaceGraph (Graph2D, Force2D, Zoomed); no
+// SpaceGraph code is used. A box is a crumb, sized by its token count. Sessions float in a force
+// layout and pull together when they share cue words. A box that is large on the screen opens: its
+// parts appear inside it, under its text. The camera zooms to a box, and a box shows
+// crumb(id, level) at the level that its screen area can hold, so zooming in shows more of the same
+// verbatim lines. The stack of zoomed boxes is the trail.
+const HASH = new URLSearchParams(location.hash.slice(1)), ARG = new URLSearchParams(location.search);
+const KEY = HASH.get("k") || ARG.get("k") || "";
+for (const v of ["bg", "fg", "dim", "accent"]) if (ARG.get(v)) document.documentElement.style.setProperty("--" + v, ARG.get(v));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
+const KIND = {span: "#9b8cff", turn: "#4fd1c5", tool: "#94a3b8", sum: "#f6c177", mem: "#f38ba8", text: "#8892a6"};
+const AGENT = "#f6c177";
+const color = k => KIND[k] || (k in HUE ? hsl(HUE[k], 1, 66) : css("accent"));
+function rgba(c, a) {
+  let h = c.startsWith("#") ? c.slice(1) : "";
+  if (h.length === 3) h = [...h].map(x => x + x).join("");
+  if (h.length !== 6) return c;
+  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4), 16)},${a})`;
+}
+const api = (p, q = {}) => fetch("api/" + p + "?" + new URLSearchParams({...q, k: KEY}))
+  .then(r => r.ok ? r.json() : Promise.reject(new Error(p + ": HTTP " + r.status)));
+const $ = id => document.getElementById(id), cv = $("g"), g = cv.getContext("2d");
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const TOP = 72, LH = 15, FONT = "12px ui-monospace,SFMono-Regular,Menlo,monospace";
+const SANS = "-apple-system,BlinkMacSystemFont,Inter,'Segoe UI',system-ui,sans-serif";
+let BOTTOM = 24, RIGHT = 0;  // the status line and the context box; the side panel (set by resize)
+const OPEN = 170;  // a box this many pixels wide shows its parts
+let W = 1, H = 1, DPR = 1, CW = 7.2;
+const msg = t => { $("msg").textContent = t; };
+
+// -- the graph: a node is a crumb at one place; a part's key is its parent's key + ">" + its slot --
+const nodes = new Map(), roots = [], cueEdges = [];
+function node(info, key, parent) {
+  const n = Object.assign({key, parent, kids: null, x: 0, y: 0, vx: 0, vy: 0, s: 40,
+    texts: new Map(), asked: new Set(), glow: 0}, info);
+  nodes.set(key, n);
+  return n;
+}
+function addRoot(info) {
+  if (nodes.has(info.id)) return nodes.get(info.id);
+  const n = node(info, info.id, null), a = Math.random() * 2 * Math.PI;
+  const d = (60 * Math.sqrt(roots.length + 1) + 80) * Math.sqrt(Math.random());
+  n.x = Math.cos(a) * d; n.y = Math.sin(a) * d; n.s = 70 * (0.3 + 0.7 * (info.pri || 0.5));
+  n.w = n.h = n.s; n.tx = n.x; n.ty = n.y; n.sub = [];  // its size now and its place in a fixed layout
+  roots.push(n); temp = Math.max(temp, 0.5); dirty = true;
+  return n;
+}
+function parts(n) {  // load the parts of a crumb once; resolves to the list of part keys
+  if (!n.loading) n.loading = n.kind === "text" || n.id.includes(":") ? Promise.resolve(n.kids = [])
+    : api("graph", {root: n.id}).then(r => {  // a crumb that holds only texts (a turn) shows its text, not a grid
+      const kids = r.nodes.slice(1);
+      return n.kids = kids.some(info => !info.id.includes(":")) ? kids.map((info, i) => node(info, `${n.key}>${i}.${info.id}`, n.key).key) : [];
+    })
+      .catch(err => { msg(err.message); return n.kids = []; });
+  return n.loading;
+}
+function layoutKids(p) {  // the parts sit in a grid in the lower 60% of the box
+  const pw = p.w || p.s, ph = p.h || p.s, m = p.kids.length, bw = pw * 0.94, bh = ph * 0.6, top = p.y - ph / 2 + ph * 0.37;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(m * bw / bh))), cell = Math.min(bw / cols, bh / Math.ceil(m / cols));
+  const left = p.x - Math.min(cols, m) * cell / 2;
+  let top1 = 1;
+  for (const key of p.kids) top1 = Math.max(top1, nodes.get(key).tokens || 1);
+  p.kids.forEach((key, i) => {
+    const k = nodes.get(key), rel = (1 + Math.log1p(k.tokens || 1)) / (1 + Math.log1p(top1));
+    k.x = left + (i % cols + 0.5) * cell; k.y = top + (Math.floor(i / cols) + 0.5) * cell;
+    k.s = cell * (0.5 + 0.42 * rel);
+    if (k.kids) layoutKids(k);
+  });
+}
+
+// -- the session layout: a force model in the manner of SpaceGraph's Force2D ----------------------
+// All pairs repel (inverse square), cue-word edges pull like springs, a weak pull to the centre keeps
+// the map compact, and boxes never overlap. The temperature falls and rises when the graph changes.
+const REPEL = 6, GRAVITY = 0.003, SPRING = 0.02, GAP = 26, LINK = 40;
+let temp = 1;
+function step() {
+  if (temp < 0.004) return;
+  const n = roots.length;
+  for (const a of roots) { a.fx = -a.x * GRAVITY; a.fy = -a.y * GRAVITY; a.r = a.s * 0.72; }
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const A = roots[i], B = roots[j];
+    let dx = B.x - A.x, dy = B.y - A.y, d2 = dx * dx + dy * dy;
+    if (d2 < 1e-6) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = dx * dx + dy * dy; }
+    const d = Math.sqrt(d2), f = REPEL * A.r * B.r / d2 / d;
+    A.fx -= dx * f; A.fy -= dy * f; B.fx += dx * f; B.fy += dy * f;
+  }
+  for (const e of cueEdges) {
+    const A = nodes.get(e.source), B = nodes.get(e.target);
+    if (!A || !B) continue;
+    const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || 1e-3;
+    const f = SPRING * e.k * (d - A.r - B.r - LINK) / d;
+    A.fx += dx * f; A.fy += dy * f; B.fx -= dx * f; B.fy -= dy * f;
+  }
+  for (const a of roots) {
+    a.vx = (a.vx + a.fx * temp) * 0.7; a.vy = (a.vy + a.fy * temp) * 0.7;
+    a.x += clamp(a.vx, -30, 30); a.y += clamp(a.vy, -30, 30);
+  }
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {  // boxes never overlap
+    const A = roots[i], B = roots[j], min = A.r + B.r + GAP, dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
+    if (d >= min || d < 1e-6) continue;
+    const push = (min - d) / 2 / d;
+    A.x -= dx * push; A.y -= dy * push; B.x += dx * push; B.y += dy * push;
+  }
+  temp *= 0.992;
+}
+
+// -- the fixed layouts: a place for each box, not forces. The grid keeps the order of the sessions (the one that
+// moved last first). The treemap gives each session an area by its size, as SpaceGraph's TreeMap2D does by weight.
+// The tree and the radial tree hang each group of linked sessions from its hub. A box moves to its place over some
+// frames, so a change of layout is easy to follow.
+const LAYOUT = {
+  grid: ["Grid", '<rect x="2" y="2" width="12" height="12" rx="1"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/>'],
+  treemap: ["Treemap", '<rect x="2" y="2" width="12" height="12" rx="1"/><path d="M8 2v12M8 8h6M2 10h6M11 8v6"/>'],
+  tree: ["Tree", '<rect x="6" y="1.5" width="4" height="3.5" rx=".8"/><rect x="1.5" y="11" width="4" height="3.5" rx=".8"/>' +
+    '<rect x="10.5" y="11" width="4" height="3.5" rx=".8"/><path d="M8 5v3M3.5 11V8h9v3"/>'],
+  radial: ["Radial", '<circle cx="8" cy="8" r="1.7"/><circle cx="8" cy="8" r="5.8"/><path d="M8 6.3V2.2M9.5 9l3.5 2M6.5 9 3 11"/>'],
+  force: ["Force", '<circle cx="3.5" cy="11.5" r="1.8"/><circle cx="12.5" cy="10" r="1.8"/><circle cx="7" cy="3.5" r="1.8"/>' +
+    '<path d="M4.4 9.9 6.1 5.1M8.3 4.8l3.3 3.6M5.3 11.2l5.4-.9"/>'],
+};
+const PAD = 22;  // the gap between two boxes in a fixed layout
+let layout = "grid", dirty = true;  // dirty: the sessions, their links or the window changed after the last arrange()
+function setLayout(k) {
+  layout = k in LAYOUT ? k : "grid"; dirty = true; temp = Math.max(temp, 0.3); manual = false;
+  localStorage.setItem("breadcrumbs.layout", layout);
+  for (const i of document.querySelectorAll("#lay input")) i.checked = i.value === layout;
+}
+function arrange() {  // the place of each box (tx, ty) and, in the treemap, its size (tw, th), round 0, 0
+  dirty = false;
+  for (const a of roots) a.tw = a.th = 0;
+  for (const e of cueEdges) e.tree = false;
+  if (layout === "force" || !roots.length) return;
+  const c = Math.max(...roots.map(a => a.s)), aspect = W / Math.max(1, H - TOP - 24);
+  if (layout === "grid") pack(roots.map(a => block(Object.assign(a, {lx: 0, ly: 0, sub: []}), c)), aspect);
+  else if (layout === "treemap") {  // a cell grows with the session's size (the root of its tokens: one big session does
+    // not fill the map) and is never smaller than the box's cell in the grid
+    const wt = a => Math.sqrt(a.tokens || 0) + 100, k = Math.max(...roots.map(a => (a.s + PAD) ** 2 / wt(a)));
+    const cells = roots.map(a => ({a, v: k * wt(a)})).sort((p, q) => q.v - p.v), area = cells.reduce((t, q) => t + q.v, 0);
+    squarify(cells, 0, 0, Math.sqrt(area * aspect), Math.sqrt(area / aspect));
+    for (const {a, x, y, w, h} of cells) Object.assign(a, {tx: x + w / 2, ty: y + h / 2, tw: w - PAD, th: h - PAD});
+  } else pack(forest().map(t => (layout === "tree" ? treeAt : ringsAt)(t, c)), aspect);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const a of roots) { x0 = Math.min(x0, a.tx); y0 = Math.min(y0, a.ty); x1 = Math.max(x1, a.tx); y1 = Math.max(y1, a.ty); }
+  for (const a of roots) { a.tx -= (x0 + x1) / 2; a.ty -= (y0 + y1) / 2; }
+}
+function place(q) {  // each box a step (q = 1: all the way) to its place and size; the force model moves it in its own way
+  const fixed = layout !== "force";
+  for (const a of roots) {
+    if (fixed) { a.x += (a.tx - a.x) * q; a.y += (a.ty - a.y) * q; }
+    a.w += ((fixed && a.tw || a.s) - a.w) * q; a.h += ((fixed && a.th || a.s) - a.h) * q;
+  }
+}
+function pack(blocks, aspect) {  // blocks in rows, the rows about as wide as the window is for its height
+  const area = blocks.reduce((t, b) => t + (b.w + PAD) * (b.h + PAD), 0);
+  const wide = Math.max(Math.sqrt(area * aspect), ...blocks.map(b => b.w));
+  let x = 0, y = 0, rh = 0;
+  for (const b of blocks) {
+    if (x > 0 && x + b.w > wide) { x = 0; y += rh + 2 * PAD; rh = 0; }  // room for the labels under a row
+    b.at(x, y); x += b.w + PAD; rh = Math.max(rh, b.h);
+  }
+}
+function block(t, c, R = 0) {  // a tree (each box at lx, ly round its root at 0, 0) as one block for pack(); R: its outer ring
+  const all = [], walk = n => { all.push(n); n.sub.forEach(walk); };
+  walk(t);
+  const xs = all.map(n => n.lx), ys = all.map(n => n.ly), x0 = Math.min(-R, ...xs) - c / 2, y0 = Math.min(-R, ...ys) - c / 2;
+  return {w: Math.max(R, ...xs) + c / 2 - x0, h: Math.max(R, ...ys) + c / 2 - y0,
+    at: (x, y) => { for (const n of all) { n.tx = x + n.lx - x0; n.ty = y + n.ly - y0; } }};
+}
+function squarify(cells, x, y, w, h) {  // the squarified treemap (Bruls, Huizing and van Wijk 2000): rows along the short
+  for (let i = 0; i < cells.length;) {  // side; a row takes the next cell while that makes its worst cell more square
+    const side = Math.min(w, h), worst = (j, sum) => { const t = (sum / side) ** 2; return Math.max(t / cells[j - 1].v, cells[i].v / t); };
+    let j = i + 1, sum = cells[i].v;
+    while (j < cells.length && worst(j + 1, sum + cells[j].v) <= worst(j, sum)) sum += cells[j++].v;
+    const t = sum / side;
+    for (let o = 0; i < j; i++) { const l = cells[i].v / t; Object.assign(cells[i], w >= h ? {x, y: y + o, w: t, h: l} : {x: x + o, y, w: l, h: t}); o += l; }
+    if (w >= h) { x += t; w -= t; } else { y += t; h -= t; }
+  }
+}
+function forest() {  // a tree for each group of linked sessions, the biggest first. The root is the hub (the session with
+  // the fewest links to the farthest one); a session hangs from its strongest link one step nearer the hub (a tree link)
+  const adj = new Map(roots.map(a => [a.key, []]));
+  for (const e of cueEdges) if (adj.has(e.source) && adj.has(e.target)) { adj.get(e.source).push([e.target, e]); adj.get(e.target).push([e.source, e]); }
+  const hops = k => { const d = new Map([[k, 0]]), q = [k]; for (const p of q) for (const [m] of adj.get(p)) if (!d.has(m)) { d.set(m, d.get(p) + 1); q.push(m); } return d; };
+  const far = k => Math.max(...hops(k).values()) - adj.get(k).length / 1e3, trees = [], seen = new Set();
+  for (const a of roots) {
+    if (seen.has(a.key)) continue;
+    const group = [...hops(a.key).keys()], hub = group.reduce((b, k) => far(k) < far(b) ? k : b), d = hops(hub);
+    for (const k of group) { seen.add(k); Object.assign(nodes.get(k), {tup: null, sub: []}); }
+    for (const n of roots) if (d.get(n.key) > 0) {  // in the order of the sessions, so the children of a session are too
+      let up = null;
+      for (const [m, e] of adj.get(n.key)) if (d.get(m) === d.get(n.key) - 1 && (!up || e.w > up[1].w)) up = [m, e];
+      up[1].tree = true; n.tup = nodes.get(up[0]); n.tup.sub.push(n);
+    }
+    trees.push(Object.assign(nodes.get(hub), {many: group.length}));
+  }
+  return trees.sort((p, q) => q.many - p.many);
+}
+function treeAt(t, c) {  // top down: each leaf takes the next column, and a parent sits over the middle of its children
+  let col = 0;
+  const put = (n, depth) => {
+    n.ly = depth * (c + 3 * PAD);
+    if (!n.sub.length) { n.lx = col++ * (c + PAD); return; }
+    for (const k of n.sub) put(k, depth + 1);
+    n.lx = (n.sub[0].lx + n.sub[n.sub.length - 1].lx) / 2;
+  };
+  put(t, 0);
+  return block(t, c);
+}
+function ringsAt(t, c) {  // the hub in the middle and each depth on a ring; a session's angle is the middle of its leaves'
+  const leaves = n => n.span = n.sub.length ? n.sub.reduce((s, k) => s + leaves(k), 0) : 1, by = [];
+  leaves(t);
+  const turn = (n, a, depth) => {  // a: where the part of the circle for n's leaves starts
+    n.ang = a + Math.PI * n.span / t.span; (by[depth] = by[depth] || []).push(n);
+    for (const k of n.sub) { turn(k, a, depth + 1); a += 2 * Math.PI * k.span / t.span; }
+  };
+  turn(t, -Math.PI / 2, 0);
+  const d = Math.SQRT2 * (c + PAD / 2), chord = da => d / 2 / Math.sin(Math.min(Math.PI, da) / 2);  // squares d apart never touch
+  let r = 0;
+  t.rings = [];  // the radii, for the guide circles that draw() shows
+  by.forEach((ring, i) => {  // each ring outside the last one, and so wide that two boxes next to each other on it do not touch
+    if (i) t.rings.push(r = Math.max(r + d, ...ring.map((n, j) => j ? chord(n.ang - ring[j - 1].ang) : ring.length > 1 ? chord(2 * Math.PI - ring[ring.length - 1].ang + n.ang) : 0)));
+    for (const n of ring) { n.lx = r * Math.cos(n.ang); n.ly = r * Math.sin(n.ang); }
+  });
+  return block(t, c, r);
+}
+
+// -- the camera and the zoom stack (the trail), in the manner of SpaceGraph's Zoomed --------------
+const cam = {x: 0, y: 0, k: 0.5}, tgt = {x: 0, y: 0, k: 0.5};
+let manual = false;
+const midX = () => (W - RIGHT) / 2, midY = () => TOP + (H - TOP - BOTTOM) / 2;
+const sx = x => (x - cam.x) * cam.k + midX(), sy = y => (y - cam.y) * cam.k + midY();
+function aim(x0, y0, x1, y1) {
+  tgt.x = (x0 + x1) / 2; tgt.y = (y0 + y1) / 2;
+  tgt.k = clamp(Math.min((W - RIGHT - 30) / Math.max(1e-3, x1 - x0), (H - TOP - BOTTOM - 16) / Math.max(1e-3, y1 - y0)), 0.02, 1e6);
+}
+const stack = ["*"];
+let dropped = 0;
+function aimTop() {
+  const n = nodes.get(stack[stack.length - 1]);
+  if (n && n.inDoc) { const s = nodes.get(n.sess); if (s && s.doc && s.doc.state === "ready") docPlace(s, s.doc); }
+  if (n) { const hw = (n.w || n.s) * 0.52, hh = (n.h || n.s) * 0.52; return aim(n.x - hw, n.y - hh, n.x + hw, n.y + hh); }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const a of roots) {
+    const hw = a.w / 2, hh = a.h / 2;
+    x0 = Math.min(x0, a.x - hw); y0 = Math.min(y0, a.y - hh); x1 = Math.max(x1, a.x + hw); y1 = Math.max(y1, a.y + hh + 16 / cam.k);
+  }
+  if (roots.length) aim(x0 - 8, y0 - 8, x1 + 8, y1 + 8);
+}
+// Zoomed's rule: the top box again goes back; a box lower in the stack cuts the stack there; a new
+// box is pushed, and past 8 boxes the oldest leaves (the trail shows one gap mark for them).
+function focus(key) {
+  const at = stack.indexOf(key);
+  if (at === stack.length - 1 && at > 0) stack.pop();
+  else if (at >= 0) stack.length = at + 1;
+  else { stack.push(key); if (stack.length > 9) { stack.splice(1, 1); dropped++; } }
+  manual = false; showTrail();
+  const n = nodes.get(key);
+  if (n && n.parent === null && n.kind !== "text") { if (n.kind === "sess" && n.session) doc(n); else parts(n); }
+}
+function back() { if (stack.length > 1) { stack.pop(); manual = false; showTrail(); } }
+function name(n) {
+  if (n.inDoc) return n.trail;
+  return n.kind + " " + (n.cues && n.cues.length ? n.cues.slice(0, 3).join(" ") : (n.title || n.id).slice(0, 26));
+}
+function showTrail() {
+  const t = $("trail");
+  t.textContent = "";
+  stack.forEach((key, i) => {
+    if (i === 1 && dropped) t.append("\u2026", sep());
+    const el = document.createElement("a"), n = nodes.get(key);
+    el.textContent = key === "*" ? "All sessions" : n ? name(n) : key;
+    el.onclick = () => { stack.length = i + 1; manual = false; showTrail(); };
+    t.append(el);
+    if (i < stack.length - 1) t.append(sep());
+  });
+  if ($("trkon").checked && trkMode === "selected") trk();  // the Size panel follows the map now, not at the next 2 s tick
+}
+function sep() { const i = document.createElement("i"); i.textContent = "/"; return i; }
+
+// -- semantic zoom: a box shows crumb(id, level) at the level that its screen area can hold -------
+const LEVELS = [0, ...Array.from({length: 12}, (_, i) => 2 ** (i - 12)), 1];
+function pick(n, chars) {
+  let level = 0;
+  for (const l of LEVELS) if (l * (n.tokens || 1) * 4 <= chars * 1.5) level = l;
+  return level;
+}
+function text(n, level) {
+  if (!n.texts.has(level) && !n.asked.has(level)) {
+    n.asked.add(level);
+    api("crumb", {id: n.id, level}).then(r => n.texts.set(level, r.text)).catch(err => msg(err.message));
+  }
+  let best = null;
+  for (const l of LEVELS) if (l <= level && n.texts.has(l)) best = n.texts.get(l);
+  return best;
+}
+const handle = n => `\u25b8 ${n.id} ${n.kind} \u00b7${n.tokens}t` + (n.cues && n.cues.length ? " | " + n.cues.join(" ") : "");
+
+// -- drawing ---------------------------------------------------------------------------------------
+let links = [], boxes = [], labels = [], words = [], hover = null, agentIds = [];
+function wrap(line, cols) {  // whole words to the box width; a handle line or a longer word is cut later
+  if (/^\s*(\u25b8|\u22ef) /.test(line)) return [line];
+  const out = [];
+  while (line.length > cols) {
+    let cut = line.lastIndexOf(" ", cols);
+    if (cut < cols / 3) cut = cols;
+    out.push(line.slice(0, cut)); line = line.slice(cut).replace(/^ +/, "");
+  }
+  return out.concat(line);
+}
+function drawText(n, x, y, px, bh) {
+  const cols = Math.floor((px - 12) / CW), rows = Math.floor((bh - 8) / LH);
+  if (cols < 12 || rows < 2) return false;
+  const lines = (text(n, pick(n, cols * rows)) || handle(n)).split("\n").flatMap(l => wrap(l, cols)), accent = css("accent");
+  g.save(); g.beginPath(); g.rect(Math.max(0, x), Math.max(TOP, y), Math.min(W, x + px) - Math.max(0, x), Math.min(H, y + bh) - Math.max(TOP, y)); g.clip();
+  g.font = FONT;
+  for (let i = 0; i < Math.min(rows, lines.length); i++) {
+    const ly = y + 6 + LH * (i + 0.8);
+    if (ly < TOP) continue;
+    if (ly > H) break;
+    const m = lines[i].match(/^\s*(\u25b8|\u22ef) (\S+)/);  // a handle or a gap: a link to its ref
+    let line = m ? lines[i].replace(/^(\s*)\u25b8 \S+ (\w+)(?: "(.*?)")? \u00b7\d+t(.*)$/, (_, a, k, t, r) => `${a}\u25b8 ${k} ${t || ""}${r}`.trimEnd())
+      .replace(/^(\s*)\u22ef \S+/, "$1\u22ef") : lines[i];  // it shows its kind and title, not its id and size
+    if (line.length > cols) line = line.slice(0, cols - 1) + "\u2026";
+    g.fillStyle = m ? (m[1] === "\u22ef" ? css("dim") : accent) : css("fg");
+    g.fillText(line, x + 6, ly);
+    if (m) links.push({x: x + 6, y: ly - LH + 3, w: line.length * CW, h: LH, ref: m[2], n});
+  }
+  g.restore();
+  return true;
+}
+const HEAD = 20;  // a box 120 pixels wide or more has a header with its kind, like a SpaceGraph frame
+function drawNode(n, t, depth) {  // a box: a session is a square, or a rectangle in the treemap; a part is a square
+  const pw = (n.w || n.s) * cam.k, ph = (n.h || n.s) * cam.k, px = Math.min(pw, ph), x = sx(n.x) - pw / 2, y = sy(n.y) - ph / 2;
+  if (x > W || y > H || x + pw < 0 || y + ph < TOP || px < 1.5) return;
+  const c = color(n.kind), lit = n.glow > t || agentIds.includes(n.id), top = stack[stack.length - 1] === n.key;
+  if (depth === 0 && px > 5) { g.shadowBlur = lit ? 22 : 12 * (n.heat || 0); g.shadowColor = lit ? AGENT : c; }
+  g.beginPath(); g.roundRect(x, y, pw, ph, Math.min(7, px * 0.1));
+  g.fillStyle = css("card"); g.fill();  // opaque: edges and outer boxes do not show through
+  g.fillStyle = rgba(c, lit ? 0.2 : 0.06 + 0.03 * depth); g.strokeStyle = top ? css("accent") : lit ? AGENT : rgba(c, 0.6);
+  g.lineWidth = top ? 2 : 1;
+  g.fill(); g.stroke();
+  g.shadowBlur = 0; g.lineWidth = 1;
+  boxes.push({n, x, y, w: pw, h: ph, depth});
+  let hy = 0;
+  if (px >= 120 && y + HEAD > TOP) {  // the header: a dot of the kind's colour, the kind, the cue words
+    hy = HEAD;
+    g.save(); g.beginPath(); g.rect(x, y, pw, HEAD); g.clip();
+    g.fillStyle = c; g.beginPath(); g.arc(x + 10, y + HEAD / 2, 3, 0, 2 * Math.PI); g.fill();
+    g.font = "600 10px " + SANS; g.fillStyle = css("fg");
+    const cues = n.cues && n.cues.length ? n.cues.slice(0, 4).join(" ") : "";
+    g.fillText((n.kind.toUpperCase() + "   " + cues).trim(), x + 18, y + HEAD / 2 + 3.5);
+    g.restore();
+    g.strokeStyle = rgba(c, 0.25); g.beginPath(); g.moveTo(x + 1, y + HEAD); g.lineTo(x + pw - 1, y + HEAD); g.stroke();
+  }
+  else if (px >= 22) {  // a small box keeps a dot of its kind, as a SpaceGraph node keeps its icon
+    g.fillStyle = c; g.beginPath(); g.arc(x + 7, y + 7, Math.min(3, px / 10), 0, 2 * Math.PI); g.fill();
+  }
+  if (n.kind === "sess" && n.session && !(n.doc && n.doc.state === "error")) {  // a session opens as a document (below)
+    if (px >= OPEN && (n.docReady || stack.includes(n.key) || (manual && px >= 0.8 * Math.min(W, H)))) {  // a zoom that passes by builds none
+      const d = doc(n);
+      if (d.state === "ready") return drawDoc(n, d, t);
+      if (d.state === "loading") {
+        g.font = "12px " + SANS; g.fillStyle = css("dim"); g.fillText("Opening the session\u2026", x + 14, Math.max(TOP + 24, y + hy + 24));
+        return;
+      }
+    }
+    if (drawText(n, x, y + hy, pw, ph - hy)) n.shown = true;  // not open yet: its text, as a closed box shows it
+    else if (depth === 0) labels.push({n, x: x + pw / 2, y: y + ph, px: pw, ph});
+    return;
+  }  // a session that did not open as a document keeps the grid of its parts
+  if (px >= OPEN) parts(n);
+  const open = px >= OPEN && n.kids && n.kids.length;
+  if (drawText(n, x, y + hy, pw, (open ? ph * 0.35 : ph) - hy)) n.shown = true;
+  else if (depth > 0 && px >= 8 * CW) {  // a small part shows its cue words (the colour gives its kind)
+    g.save(); g.beginPath(); g.rect(x, y, pw, ph); g.clip(); g.font = FONT; g.fillStyle = css("fg");
+    g.fillText(name(n).slice(n.kind.length + 1), x + 4, y + ph / 2 + 4); g.restore();
+  } else if (depth === 0) labels.push({n, x: x + pw / 2, y: y + ph, px: pw, ph});
+  if (open) { layoutKids(n); for (const key of n.kids) drawNode(nodes.get(key), t, depth + 1); }
+}
+function drawLabels() {  // biggest boxes first; a label goes below, above, right or left, where it overlaps nothing
+  g.font = "12px " + SANS; g.fillStyle = rgba(css("fg"), 0.85);
+  const placed = boxes.filter(b => b.depth === 0).map(b => [b.x, b.y, b.x + b.w, b.y + b.h]);
+  const free = r => r[0] >= 0 && r[2] <= W - RIGHT && r[1] >= TOP && r[3] <= H - BOTTOM &&
+    !placed.some(p => p[0] < r[2] && r[0] < p[2] && p[1] < r[3] && r[1] < p[3]);
+  const cuts = (r, a, b) => {  // Liang-Barsky: does the link a-b cross the rectangle r?
+    let t0 = 0, t1 = 1; const dx = b[0] - a[0], dy = b[1] - a[1];
+    for (const [p, q] of [[-dx, a[0] - r[0]], [dx, r[2] - a[0]], [-dy, a[1] - r[1]], [dy, r[3] - a[1]]]) {
+      if (p === 0) { if (q < 0) return false; continue; }
+      const t = q / p;
+      if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+    }
+    return true;
+  };
+  const clear = r => !words.some(l => cuts(r, l.a, l.b));
+  labels.sort((a, b) => b.px - a.px);
+  const cell = (Math.max(...roots.map(a => a.s)) + PAD) * cam.k;  // the width of a cell of a fixed layout
+  for (const l of labels) {  // a spot that no link crosses first; else any free spot. A fixed layout cuts it to its cell
+    const s = fitText((l.n.kind === "sess" ? name(l.n).slice(5) : name(l.n)).slice(0, 36), layout === "force" ? W : cell);
+    const w = g.measureText(s).width, h = l.px / 2;
+    const spots = [[l.x - w / 2, l.y + 4], [l.x - w / 2, l.y - l.ph - 19], [l.x + h + 6, l.y - l.ph / 2 - 8], [l.x - h - w - 6, l.y - l.ph / 2 - 8]]
+      .map(([x, y]) => [x - 2, y, x + w + 2, y + 16]);
+    const r = spots.find(r => free(r) && clear(r)) || spots.find(free);
+    if (!r) continue;
+    placed.push(r); g.fillText(s, r[0] + 2, r[1] + 12);
+  }
+  g.font = "11px " + SANS;
+  for (const l of words) {  // a cue edge names its shared words near its middle, in a pill that overlaps nothing
+    const w = g.measureText(l.s).width;
+    for (const f of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+      const x = l.a[0] + f * (l.b[0] - l.a[0]), y = l.a[1] + f * (l.b[1] - l.a[1]), r = [x - w / 2 - 7, y - 9, x + w / 2 + 7, y + 9];
+      if (!free(r)) continue;
+      placed.push(r);
+      g.beginPath(); g.roundRect(r[0], r[1], r[2] - r[0], r[3] - r[1], 9);
+      g.fillStyle = css("panel"); g.fill(); g.strokeStyle = l.on ? css("accent") : css("line2"); g.stroke();
+      g.fillStyle = l.on ? css("accent") : css("dim"); g.fillText(l.s, r[0] + 7, y + 4);
+      break;
+    }
+  }
+}
+function path(keys, c, t, dash) {  // the trail between boxes; a step into a part of the same box is not drawn
+  const pts = keys.map(k => nodes.get(k)).filter(Boolean);
+  const inside = (a, b) => b.key.startsWith(a.key + ">") || a.key.startsWith(b.key + ">") || (a.sess && a.sess === b.sess);
+  g.save(); g.setLineDash(dash); g.lineDashOffset = -t / 40; g.strokeStyle = c; g.lineWidth = 2; g.globalAlpha = 0.85;
+  g.beginPath();
+  for (let i = 1; i < pts.length; i++) {
+    if (inside(pts[i - 1], pts[i])) continue;
+    g.moveTo(sx(pts[i - 1].x), sy(pts[i - 1].y)); g.lineTo(sx(pts[i].x), sy(pts[i].y));
+  }
+  g.stroke(); g.restore();
+}
+function draw(t) {
+  g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  links = []; boxes = []; labels = []; words = [];
+  const dim = css("dim"), accent = css("accent");
+  const edge = e => {  // a cue link; a tree link in the tree is an elbow, as in an org chart
+    const A = nodes.get(e.source), B = nodes.get(e.target);
+    if (!A || !B) return;
+    const on = hover && (hover.key === e.source || hover.key === e.target);
+    g.strokeStyle = on ? accent : rgba(dim, 0.22 + 0.4 * e.k); g.lineWidth = on ? 2 : 1 + e.k;
+    g.beginPath(); g.moveTo(sx(A.x), sy(A.y));
+    if (e.tree && layout === "tree") { const m = sy((A.y + B.y) / 2); g.lineTo(sx(A.x), m); g.lineTo(sx(B.x), m); }
+    g.lineTo(sx(B.x), sy(B.y)); g.stroke();
+    if (e.shared) words.push({a: [sx(A.x), sy(A.y)], b: [sx(B.x), sy(B.y)], s: e.shared.slice(0, 2).join(" "), on});
+  };
+  // The force layout draws all links under the boxes. A fixed layout draws its tree links there, and the other
+  // links of the box under the pointer over the boxes: a link across a grid would only cross other boxes.
+  const under = e => layout === "force" || e.tree, over = e => !under(e) && hover && (hover.key === e.source || hover.key === e.target);
+  if (layout === "radial") for (const a of roots) if (a.rings && !a.tup) for (const r of a.rings) {  // the rings round each hub
+    g.strokeStyle = css("line"); g.lineWidth = 1; g.beginPath(); g.arc(sx(a.x), sy(a.y), r * cam.k, 0, 2 * Math.PI); g.stroke();
+  }
+  cueEdges.filter(under).forEach(edge);
+  for (const a of roots) if (a.kids) layoutKids(a);
+  for (const a of roots) drawNode(a, t, 0);
+  cueEdges.filter(over).forEach(edge);
+  path(stack.slice(1), accent, t, [6, 10]);
+  drawLabels();
+}
+
+// -- an open session is a document: the structure that SpaceGraph's session graph gives a session --------
+// The layout follows the session graph of opencode_spacegraph (SPACEGRAPH.md section 4) as
+// hermes-spacegraph assigns it to crumbs (its DESIGN section 4): a frame for each user turn, a band for
+// each run of tools of one phase (explore, edit, verify, delegate, result; by tool name), a card for each
+// crumb, and a card for each file that the tools read or wrote. The crumbs fit it as they are: a user turn
+// is the prompt, an assistant turn or the text of a step is the narrative, and a tool crumb is a tool
+// card whose call is a line of its step. A card shows crumb(id, level) at the level that its area holds,
+// so zooming in on a card shows more of its verbatim lines. Spans are not drawn: the turns and phases
+// group the leaves, and a span brings its first leaf into view. No SpaceGraph code is used.
+const CARD = [220, 72], FILE_H = 56, GX = 14, GY = 12, COLS = 4, FPAD = 16, FHEAD = 30, BHEAD = 24, BPAD = 8, FGAP = 48;
+const ROWW = COLS * (CARD[0] + 2 * BPAD) + (COLS - 1) * GX, FRAME = ROWW + 2 * FPAD;  // a row holds 4 one-card bands
+const HUE = {explore: 210, edit: 145, verify: 38, delegate: 275, result: 196, prompt: 220, narrative: 250,
+  turn: 220, file: 190, mem: 330, sum: 45};
+const GLYPH = {explore: "\u2315", edit: "\u270e", verify: "$", delegate: "\u21c4", result: "\u2713", prompt: "\u25b8",
+  narrative: "\u00b6", file: "\u25a4", mem: "\u25c6", sum: "\u03a3"};
+const MONO = "ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace";
+const hsl = (h, a = 1, l = 64) => `hsla(${h},70%,${l}%,${a})`;
+// The phase of a tool, by its name: the vocabulary of hermes-spacegraph (src/hermes.ts), so that the two
+// views put a call in the same phase. breadcrumbs' own tools (crumb, crumb_find) read memory: explore.
+const PHASE_OF = {};
+for (const [ph, names] of Object.entries({
+  explore: "read_file search_files web_search web_extract skill_view skills_list session_search tool_search tool_describe " +
+    "vision_analyze browser_exec browser_navigate browser_snapshot browser_vision crumb crumb_find",
+  edit: "write_file patch skill_manage memory context_notes todo todo_list",
+  verify: "terminal execute_code process process_manage",
+  delegate: "delegate_task message_agent send_message clarify"})) for (const t of names.split(" ")) PHASE_OF[t] = ph;
+const bareTool = v => { const t = String(v || "tool").trim() || "tool"; return t.startsWith("mcp__") ? t.slice(5) : t; };
+const firstStr = v => typeof v === "string" ? v.trim() : Array.isArray(v) ? v.map(firstStr).find(Boolean) || "" : "";
+const baseName = f => f.replace(/\/+$/, "").split("/").pop() || f;
+function callDetail(nm, a) {  // a short phrase that says what a call did: its label next to the tool name
+  switch (nm) {
+    case "read_file": case "write_file": case "patch": return baseName(firstStr(a.path || a.file_path));
+    case "search_files": return firstStr(a.pattern);
+    case "terminal": case "execute_code":  // the command itself, not the cd in front of it
+      return firstStr(a.command || a.code).replace(/^(\s*(#[^\n]*\n|cd\s+\S+\s*(&&|;|\n)))+\s*/, "").replace(/\s+/g, " ");
+    case "web_search": case "session_search": case "crumb_find": return firstStr(a.query || a.q);
+    case "web_extract": { const u = firstStr(a.urls || a.url); try { const v = new URL(u); return v.host + v.pathname; } catch (e) { return u; } }
+    case "skill_view": case "skill_manage": return firstStr(a.name);
+    case "delegate_task": { const k = Array.isArray(a.tasks) ? a.tasks.length : 1; return k + (k === 1 ? " task" : " tasks"); }
+    case "message_agent": return firstStr(a.target);
+    default: return Object.values(a).map(firstStr).find(Boolean) || "";
+  }
+}
+function callTargets(nm, a) {  // the files that a call read or wrote, read off its arguments
+  const f = firstStr(a.path || a.file_path);
+  return !f ? [] : nm === "read_file" ? [[f, "read"]] : nm === "write_file" || nm === "patch" ? [[f, "write"]] : [];
+}
+function stepCalls(s) {  // a step's text: its narrative, then one line per call, "<name> <arguments>" (ingest.put_rows)
+  const lines = tidy(s, true).split("\n"), say = [], calls = [];
+  const parse = t => { try { const v = JSON.parse(t); return v && typeof v === "object" ? v : null; } catch (e) { return null; } };
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^([A-Za-z_][\w.:-]*) (\{.*)$/);
+    let a = null, j = i;
+    if (m) {  // the store keeps long lines as several lines: a call's arguments end where they parse
+      let body = m[2];
+      a = parse(body);
+      while (!a && j + 1 < lines.length && j - i < 400) { body += lines[++j]; a = parse(body); }
+    }
+    if (!a) { if (!calls.length) say.push(lines[i]); continue; }
+    i = j;
+    if (bareTool(m[1]) === "tool_call" && Array.isArray(a.calls) && a.calls.length) {  // a deferred tool: its inner call
+      const c = a.calls[0] || {};
+      let ia = c.arguments || c.args || {};
+      if (typeof ia === "string") try { ia = JSON.parse(ia); } catch (e) { ia = {}; }
+      calls.push({nm: bareTool(c.name), args: ia && typeof ia === "object" ? ia : {}});
+    } else calls.push({nm: bareTool(m[1]), args: a});
+  }
+  return {say: say.join("\n").trim(), calls};
+}
+function asJson(s) {  // a JSON result; the store keeps long lines as several lines, so the breaks are joined first
+  if (!s.startsWith("{")) return null;
+  for (const t of [s, s.replace(/\n/g, "")]) { try { const v = JSON.parse(t); if (v && typeof v === "object") return v; } catch (e) { /* next */ } }
+  return null;
+}
+function toolOutcome(s) {  // "ok" or "failed", read off a tool result; "" when the result does not say
+  s = (s || "").trim();
+  if (!s.startsWith("{")) return /^(error|traceback)\b/i.test(s) ? "failed" : "";
+  const v = asJson(s);
+  if (!v) return "";
+  return v.success === false || (typeof v.error === "string" && v.error.trim()) ||
+    (typeof v.exit_code === "number" && v.exit_code !== 0) ? "failed" : "ok";
+}
+function toolGist(s) {  // the first lines of a tool result, without its JSON wrapper
+  s = (s || "").trim();
+  const v = asJson(s), raw = /^\{"\w+": ?"/.test(s) ? s.replace(/^\{"\w+": ?"/, "").replace(/\\n/g, "\n").replace(/\\"/g, '"') : s;
+  const body = v ? ["error", "output", "content", "result", "message", "summary", "text"].map(k => v[k])
+    .find(x => typeof x === "string" && x.trim()) || "" : raw;  // a result that does not parse: its first string, unwrapped
+  return body.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 6).join("\n");
+}
+async function poolRun(items, k, fn) {
+  let i = 0;
+  await Promise.all(Array.from({length: Math.min(k, items.length)}, async () => { while (i < items.length) await fn(items[i++]); }));
+}
+function doc(s) {  // the document of a session, built once: s.doc.state is loading, ready or error
+  if (!s.docReady) {
+    s.doc = {state: "loading"};
+    s.docReady = buildDoc(s).then(d => (s.doc = d)).catch(err => (s.doc = {state: "error", err: err.message}));
+  }
+  return s.doc;
+}
+async function buildDoc(s) {
+  const r = await api("session", {sid: s.session}), byId = new Map(r.nodes.map(x => [x.id, x])), kids = new Map();
+  for (const e of r.edges) if (e.kind === "kid") { if (!kids.has(e.source)) kids.set(e.source, []); kids.get(e.source).push(e.target); }
+  const leaves = [], firstLeaf = new Map(), seen = new Set();
+  const walk = id => {  // the leaves in order; each span keeps its first leaf
+    if (seen.has(id)) return null;
+    seen.add(id);
+    const k = kids.get(id);
+    if (!k || !k.length) { if (id !== r.root && byId.has(id)) { leaves.push(byId.get(id)); return id; } return null; }
+    let f = null;
+    for (const c of k) { const x = walk(c); f = f || x; }
+    if (f) firstLeaf.set(id, f);
+    return f;
+  };
+  walk(r.root);
+  const steps = leaves.filter(x => x.kind === "step"), calls = new Map();
+  let got = 0;
+  await poolRun(steps, 6, async x => {
+    calls.set(x.id, stepCalls((await api("crumb", {id: x.id, level: 1})).text));
+    if (++got % 40 === 0) msg(`Opening the session: ${got} of ${steps.length} steps read`);
+  });
+  // turns: a user turn starts one; leaves before the first user turn form a turn without a prompt
+  const turns = [], queue = new Map();
+  for (const x of leaves) {
+    const role = (x.meta && x.meta.role) || "";
+    if (x.kind === "turn" && role === "user") { turns.push({prompt: x, items: []}); continue; }
+    if (!turns.length) turns.push({prompt: null, items: []});
+    const T = turns[turns.length - 1];
+    if (x.kind === "step") {
+      const c = calls.get(x.id) || {say: "", calls: []};
+      queue.set(x.id, c.calls.slice());
+      T.items.push(c.say ? {kind: "narrative", x, say: c.say} : {kind: "ref", x});
+    } else if (x.kind === "tool") {
+      const q = x.meta && x.meta.step ? queue.get(x.meta.step) : null, c = q && q.length ? q.shift() : null;
+      const nm = c ? c.nm : bareTool(role.replace(/^tool:?/, "")), args = c ? c.args : {};
+      T.items.push({kind: "tool", x, nm, args, phase: PHASE_OF[nm] || "result"});
+    } else T.items.push({kind: x.kind === "mem" ? "mem" : x.kind === "sum" ? "sum" : "narrative", x});
+  }
+  const d = {state: "ready", frames: [], bands: [], cards: [], edges: [], byCrumb: new Map(), W: 1, H: 1, k: 1};
+  const add = (key, info, list) => { const n = node(Object.assign({inDoc: d, sess: s.key}, info), `${s.key}>${key}`, s.key); list.push(n); return n; };
+  const says = x => (x.title || "").replace(/^(user|assistant|tool(:[^:\s]*)?):\s*/, "");
+  const files = new Map(), wires = [];  // path -> {n, reads, writes}; [tool card, path, read|write]
+  turns.forEach((T, ti) => {
+    const local = [], put = (n, x, y, w, h) => { n.rx = x; n.ry = y; n.rw = w; n.rh = h; local.push(n); };
+    const tall = x => ((x && x.tokens) || 0) > 60 ? 100 : CARD[1];
+    // the flow of a turn: a prose card takes a whole row; bands sit side by side and wrap, like words in a line
+    let y = FHEAD + 6, rx = 0, rowH = 0, count = 0;
+    const endRow = () => { if (rx > 0) { y += rowH + GY; rx = 0; rowH = 0; } };
+    const prose = (key, info, h) => { endRow(); const n = add(key, info, d.cards); put(n, FPAD, y, ROWW, h); y += h + GY; count++; return n; };
+    const band = (key, info, k, ch) => {  // a band of k cards of height ch; returns where its cards go
+      const c = Math.min(COLS, k), rows = Math.ceil(k / COLS);
+      const bw = c * CARD[0] + (c - 1) * GX + 2 * BPAD, bh = BHEAD + rows * (ch + GY) - GY + BPAD;
+      if (rx > 0 && rx + bw > ROWW) endRow();
+      const b = add(key, info, d.bands), bx = FPAD + rx, by = y;
+      put(b, bx, by, bw, bh);
+      rx += bw + GX; rowH = Math.max(rowH, bh);
+      return i => [bx + BPAD + (i % COLS) * (CARD[0] + GX), by + BHEAD + Math.floor(i / COLS) * (ch + GY)];
+    };
+    if (T.prompt) {
+      const x = T.prompt;
+      d.byCrumb.set(x.id, prose("c:" + x.id, {id: x.id, kind: "prompt", label: "user", head: says(x), tokens: x.tokens, tip: says(x),
+        trail: "prompt: " + says(x)}, tall(x)).key);
+    }
+    const segs = [];
+    for (const it of T.items) {
+      if (it.kind === "ref") continue;  // a step without text: its tool cards stand for it
+      const last = segs[segs.length - 1];
+      if (it.kind === "tool" && last && last.band === it.phase) last.items.push(it);
+      else segs.push(it.kind === "tool" ? {band: it.phase, items: [it]} : {it});
+    }
+    const fresh = [];
+    for (const sg of segs) {
+      if (sg.it) {
+        const it = sg.it, x = it.x, lab = it.kind === "mem" ? "memory" : it.kind === "sum" ? "summary (model text)" : "assistant";
+        const head = it.say ? it.say.split("\n")[0] : says(x);
+        d.byCrumb.set(x.id, prose("c:" + x.id, {id: x.id, kind: it.kind, label: lab, say: it.say || "", head, tokens: x.tokens,
+          tip: it.say ? it.say.slice(0, 300) : says(x), trail: lab + ": " + head}, tall(x)).key);
+        continue;
+      }
+      const at = band(`b${ti}.${d.bands.length}`, {kind: sg.band, label: sg.band, count: sg.items.length, synthetic: true,
+        tip: `${sg.band}: ${sg.items.map(it => it.nm).join(", ").slice(0, 300)}`, trail: `${sg.band} (turn ${ti + 1})`}, sg.items.length, CARD[1]);
+      sg.items.forEach((it, i) => {
+        const x = it.x, det = callDetail(it.nm, it.args);
+        const n = add("c:" + x.id, {id: x.id, kind: it.phase, label: it.nm, detail: det, mono: true, tokens: x.tokens,
+          tip: it.nm + (det ? " " + det : "") + "\n" + firstStr(Object.values(it.args).map(firstStr)).slice(0, 400),
+          trail: it.nm + (det ? " " + det.slice(0, 40) : "")}, d.cards);
+        d.byCrumb.set(x.id, n.key);
+        if (x.meta && x.meta.step && !d.byCrumb.has(x.meta.step)) d.byCrumb.set(x.meta.step, n.key);
+        const [cx, cy] = at(i);
+        put(n, cx, cy, CARD[0], CARD[1]);
+        for (const [f, how] of callTargets(it.nm, it.args)) {
+          if (!files.has(f)) { files.set(f, {n: null, read: 0, write: 0}); fresh.push(f); }
+          files.get(f)[how]++; wires.push([n, f, how]);
+        }
+        count++;
+      });
+    }
+    if (fresh.length) {  // the files that this turn touched first; later turns link to them here
+      endRow();
+      const at = band(`b${ti}.files`, {kind: "file", label: "files", count: fresh.length, synthetic: true,
+        tip: fresh.join("\n"), trail: `files (turn ${ti + 1})`}, fresh.length, FILE_H);
+      fresh.forEach((f, i) => {
+        const n = add("file:" + f, {kind: "file", label: baseName(f), mono: true, synthetic: true, path: f, tip: f, trail: "file " + baseName(f)}, d.cards);
+        files.get(f).n = n;
+        const [cx, cy] = at(i);
+        put(n, cx, cy, CARD[0], FILE_H);
+      });
+    }
+    endRow();
+    const fr = add("f" + ti, {kind: "turn", label: T.prompt ? says(T.prompt) : "before the first prompt", count, synthetic: true,
+      tip: T.prompt ? says(T.prompt) : "", trail: "turn " + (ti + 1) + (T.prompt ? ": " + says(T.prompt).slice(0, 40) : "")}, d.frames);
+    fr.local = local; fr.rw = FRAME; fr.rh = y - GY + FPAD;
+  });
+  for (const [f, v] of files) {
+    const dir = f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : "";
+    v.n.sum = [v.read ? v.read + (v.read === 1 ? " read" : " reads") : "", v.write ? v.write + (v.write === 1 ? " write" : " writes") : ""]
+      .filter(Boolean).join(" \u00b7 ") + (dir ? "\n" + dir : "");
+  }
+  for (const [n, f, how] of wires) d.edges.push({a: n, b: files.get(f).n, how});
+  for (const [span, leaf] of firstLeaf) if (!d.byCrumb.has(span) && d.byCrumb.has(leaf)) d.byCrumb.set(span, d.byCrumb.get(leaf));
+  // the frames in rows, so that the document is about as wide as it is tall (it sits in a square box)
+  const fs = d.frames;
+  let per = 1, score = Infinity;
+  for (let k = 1; k <= Math.max(1, fs.length); k++) {
+    let h = 0;
+    for (let i = 0; i < fs.length; i += k) h += Math.max(...fs.slice(i, i + k).map(f => f.rh)) + FGAP;
+    const sc = Math.abs(Math.log((k * FRAME + (k - 1) * FGAP) / Math.max(1, h - FGAP)));
+    if (sc < score) { score = sc; per = k; }
+  }
+  let fy = 0;
+  for (let i = 0; i < fs.length; i += per) {
+    const row = fs.slice(i, i + per);
+    row.forEach((f, j) => {
+      const fx = j * (FRAME + FGAP);
+      f.rx = fx; f.ry = fy;
+      for (const n of f.local) { n.rx += fx; n.ry += fy; }
+    });
+    fy += Math.max(...row.map(f => f.rh)) + FGAP;
+  }
+  d.W = Math.max(1, Math.min(per, fs.length) * FRAME + (Math.min(per, fs.length) - 1) * FGAP); d.H = Math.max(1, fy - FGAP);
+  d.all = [...d.frames, ...d.bands, ...d.cards];
+  if (got >= 40) msg(`${leaves.length} crumbs in ${turns.length} turn${turns.length === 1 ? "" : "s"}`);
+  return d;
+}
+function docPlace(s, d) {  // world rects of the document inside its session's box (the box can still move)
+  const w = s.w || s.s, h = s.h || s.s, m = Math.min(w, h), left = s.x - w * 0.47, top = s.y - h * 0.5 + m * 0.085, aw = w * 0.94, ah = h - m * 0.115;
+  const k = Math.min(aw / d.W, ah / d.H), ox = left + (aw - d.W * k) / 2;
+  d.k = k;
+  for (const n of d.all) { n.w = n.rw * k; n.h = n.rh * k; n.x = ox + n.rx * k + n.w / 2; n.y = top + n.ry * k + n.h / 2; }
+}
+function fitText(t, w) {  // the text cut to a width in the current font, with an ellipsis
+  if (w <= 6) return "";
+  if (g.measureText(t).width <= w) return t;
+  let lo = 0, hi = t.length;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (g.measureText(t.slice(0, m) + "\u2026").width <= w) lo = m; else hi = m - 1; }
+  return lo ? t.slice(0, lo) + "\u2026" : "";
+}
+function drawDoc(s, d, t) {
+  docPlace(s, d);
+  const z = d.k * cam.k, R = n => [sx(n.x - n.w / 2), sy(n.y - n.h / 2), n.w * cam.k, n.h * cam.k];
+  const pw = (s.w || s.s) * cam.k, ph = (s.h || s.s) * cam.k, hd = Math.min(HEAD, Math.min(pw, ph) * 0.085);  // the session's box: the canvas of the document
+  const bx = sx(s.x) - pw / 2, by = sy(s.y) - ph / 2;
+  g.save(); g.beginPath(); g.roundRect(bx + 1, by + hd + 1, pw - 2, ph - hd - 2, 6);
+  g.fillStyle = css("bg"); g.fill(); g.restore();
+  const on = r => r[0] < W && r[1] < H && r[0] + r[2] > 0 && r[1] + r[3] > TOP && r[2] >= 1;
+  for (const n of d.frames) { const r = R(n); if (on(r)) { docFrame(n, r, z); boxes.push({n, x: r[0], y: r[1], w: r[2], h: r[3], depth: 1}); } }
+  for (const n of d.bands) { const r = R(n); if (on(r)) { docBand(n, r, z); boxes.push({n, x: r[0], y: r[1], w: r[2], h: r[3], depth: 2}); } }
+  if (CARD[0] * z >= 40) for (const e of d.edges) docEdge(e);
+  for (const n of d.cards) { const r = R(n); if (on(r) && docCard(n, r, z, t) !== false) boxes.push({n, x: r[0], y: r[1], w: r[2], h: r[3], depth: 3}); }
+}
+function docHead(label, count, hue, x, y, w, fs) {  // a frame's or a band's head: a dot, its name, how many it holds
+  g.font = `600 ${fs}px ${SANS}`;
+  if ("letterSpacing" in g) g.letterSpacing = "0.06em";
+  const cnt = String(count), cw = g.measureText(cnt).width;
+  g.fillStyle = hsl(hue, 1, 70); g.beginPath(); g.arc(x + 9, y - fs * 0.35, 2.6, 0, 2 * Math.PI); g.fill();
+  g.fillStyle = css("fg"); g.fillText(fitText(label.toUpperCase(), w - 34 - cw), x + 17, y);
+  g.fillStyle = css("dim"); g.fillText(cnt, x + w - 9 - cw, y);
+  if ("letterSpacing" in g) g.letterSpacing = "0px";
+}
+function docFrame(n, [x, y, w, h], z) {
+  const top = stack[stack.length - 1] === n.key;
+  g.beginPath(); g.roundRect(x, y, w, h, clamp(10 * z, 2, 12));
+  g.fillStyle = hsl(HUE.turn, 0.035); g.fill();
+  g.strokeStyle = top ? css("accent") : hsl(HUE.turn, 0.3); g.lineWidth = top ? 2 : 1; g.stroke(); g.lineWidth = 1;
+  const fs = clamp(FHEAD * z * 0.4, 9, 11.5), small = CARD[0] * z < 50;
+  if (w < 60 || (FHEAD * z < fs + 3 && !small)) return;  // too low for its head: the prompt card says it
+  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+  if (FHEAD * z < fs + 6) {  // overview: the head sits on a pill over the first row
+    g.fillStyle = css("panel"); g.beginPath(); g.roundRect(x + 2, y + 2, w - 4, fs + 8, 4); g.fill();
+  }
+  docHead(n.label, n.count, HUE.turn, x, y + Math.max(fs + 5, FHEAD * z * 0.64), w, fs);
+  g.restore();
+}
+function docBand(n, [x, y, w, h], z) {
+  const hue = HUE[n.kind], top = stack[stack.length - 1] === n.key, tiny = CARD[0] * z < 50;  // tiny: the band stands for its cards
+  g.beginPath(); g.roundRect(x, y, w, h, clamp(8 * z, 2, 10));
+  g.fillStyle = hsl(hue, tiny ? 0.24 : 0.07); g.fill();
+  g.strokeStyle = top ? css("accent") : hsl(hue, 0.34); g.lineWidth = top ? 2 : 1; g.stroke(); g.lineWidth = 1;
+  const fs = clamp(BHEAD * z * 0.45, 8.5, 10.5);
+  if (w < 40 || h < fs + 4 || (!tiny && BHEAD * z < 9)) return;
+  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+  docHead(n.label, n.count, hue, x, tiny ? y + Math.min(h / 2 + fs * 0.35, fs + 5) : y + Math.max(fs + 4, BHEAD * z * 0.66), w, fs);
+  g.restore();
+}
+function docEdge(e) {  // a tool card to the file that it read (blue) or wrote (green)
+  const a = e.a, b = e.b, ax = sx(a.x), ay = sy(a.y + a.h / 2), bx = sx(b.x), by = sy(b.y - b.h / 2);
+  if ((ax < 0 && bx < 0) || (ax > W && bx > W) || (ay < TOP && by < TOP) || (ay > H && by > H)) return;
+  const my = (ay + by) / 2;
+  g.strokeStyle = e.how === "write" ? hsl(HUE.edit, 0.55) : hsl(HUE.explore, 0.35); g.lineWidth = 1.3;
+  g.beginPath(); g.moveTo(ax, ay); g.bezierCurveTo(ax, my, bx, my, bx, by); g.stroke(); g.lineWidth = 1;
+}
+function docFull(n) {  // a tool result at level 1, for its outcome and its first lines (results up to 25,000 tokens)
+  if (n.full === undefined && (n.tokens || 0) <= 25000) {
+    n.full = null;
+    api("crumb", {id: n.id, level: 1}).then(r => { n.full = tidy(r.text, true); n.st = toolOutcome(n.full); n.gist = toolGist(n.full); })
+      .catch(() => {});
+  }
+}
+function docCard(n, [x, y, w, h], z, t) {
+  const hue = HUE[n.kind] ?? 220, top = stack[stack.length - 1] === n.key, lit = n.glow > t || agentIds.includes(n.id);
+  const small = CARD[0] * z < 50;
+  if (small && n.mono) return false;  // overview: its band stands for it
+  if (w < 26 || h < 9) { g.fillStyle = hsl(hue, lit ? 0.95 : 0.55); g.fillRect(x, y, Math.max(1, w), Math.max(1, h)); return true; }
+  if (small) {  // overview: a prose card is one line, its label and its first words
+    g.beginPath(); g.roundRect(x, y, w, h, 3); g.fillStyle = css("card"); g.fill(); g.fillStyle = hsl(hue, 0.1); g.fill();
+    g.strokeStyle = top ? css("accent") : lit ? AGENT : hsl(hue, 0.45); g.stroke();
+    if (w >= 70) {
+      g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+      const fs = clamp(h * 0.62, 7, 10), ty = y + Math.min(h, fs + 6) / 2 + fs * 0.36;
+      g.font = `600 ${fs}px ${SANS}`; g.fillStyle = hsl(hue, 1, 76); g.fillText(n.label, x + 5, ty);
+      const lw = g.measureText(n.label).width + 5;
+      g.font = `${fs}px ${SANS}`; g.fillStyle = css("fg"); g.fillText(fitText(n.head || "", w - 12 - lw), x + 5 + lw, ty);
+      g.restore();
+    }
+    return true;
+  }
+  const u = Math.min(1.15, z), tool = n.mono && n.kind !== "file";
+  if (lit) { g.shadowBlur = 18; g.shadowColor = AGENT; }
+  g.beginPath(); g.roundRect(x, y, w, h, clamp(7 * u, 2, 8));
+  g.fillStyle = css("card"); g.fill(); g.shadowBlur = 0;
+  g.fillStyle = hsl(hue, 0.07); g.fill();
+  g.strokeStyle = top ? css("accent") : lit ? AGENT : hsl(hue, 0.45); g.lineWidth = top ? 2 : 1; g.stroke(); g.lineWidth = 1;
+  if (tool && w >= 110) docFull(n);
+  const pad = Math.max(4, 9 * u), chip = w < 100 ? 0 : Math.max(10, 20 * u);  // a narrow card gives its glyph's room to its label
+  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+  if (chip) {
+    g.beginPath(); g.roundRect(x + pad, y + pad, chip, chip, 5 * u); g.fillStyle = hsl(hue, 0.2); g.fill();
+    g.font = `${12 * u}px ${SANS}`; g.textAlign = "center"; g.fillStyle = hsl(hue, 1, 74);
+    g.fillText(GLYPH[n.kind] || "\u2022", x + pad + chip / 2, y + pad + chip * 0.72); g.textAlign = "left";
+  }
+  if (n.st) {  // the outcome as a corner dot
+    g.fillStyle = n.st === "ok" ? "#3fb950" : "#f85149";
+    g.beginPath(); g.arc(x + w - pad - 3 * u, y + pad + 4 * u, 3.4 * u, 0, 2 * Math.PI); g.fill();
+  }
+  if (h >= 16 && w >= 50) {
+    const fs = Math.max(9, 12.5 * Math.min(u, 1.05)), ly = chip ? y + pad + chip * 0.72 : y + pad + fs * 0.85, lx = x + pad + (chip ? chip + Math.max(4, 8 * u) : 0);
+    const room = x + w - lx - pad - (n.st ? 10 * u : 0), by = Math.max(y + pad + chip, ly + fs * 0.3) + Math.max(2, 5 * u);
+    g.font = `600 ${fs}px ${n.mono ? MONO : SANS}`; g.fillStyle = n.mono ? css("fg") : hsl(hue, 1, 76);
+    const lab = fitText(n.label, room), lw = g.measureText(lab).width + 7 * Math.max(u, 0.6);
+    g.fillText(lab, lx, ly);
+    if (!n.mono) docProse(n, lx + lw, ly, room - lw, x + pad, w - 2 * pad, y + h - pad * 0.5, fs);  // the text runs on from its label
+    else {
+      if (n.detail) { g.font = `${fs}px ${MONO}`; g.fillStyle = css("dim"); g.fillText(fitText(n.detail, room - lw), lx + lw, ly); }
+      docBody(n, x + pad, by, w - 2 * pad, y + h - pad * 0.5 - by, u);
+    }
+  }
+  g.restore();
+}
+function docProse(n, x1, y1, w1, x2, w2, yEnd, fs0) {  // a prose card's text: it starts after the label and wraps under it
+  const fs = Math.max(9, fs0 * 0.97), lh = fs * 1.45;
+  g.font = `${fs}px ${SANS}`;
+  const rows = 1 + Math.max(0, Math.floor((yEnd - y1 - lh * 0.3) / lh)), cw = g.measureText("abcdefghijklmnopqrstuvwxyz").width / 26;
+  const cap = Math.max(1, Math.floor((Math.max(0, w1) + (rows - 1) * w2) / cw));
+  let s = n.say && cap < 900 ? n.say : null;
+  if (s === null) { const tx = text(n, pick(n, cap)); s = tx == null ? (n.head || "\u2026") : tidy(tx, true); }
+  const out = [];
+  let cur = "", width = Math.max(0, w1), more = false;
+  const flush = () => { out.push(cur); cur = ""; width = w2; };
+  for (const para of s.split("\n")) {
+    for (const wd of para.split(/\s+/).filter(Boolean)) {
+      const t = cur ? cur + " " + wd : wd;
+      if (g.measureText(t).width <= width || (!cur && out.length)) cur = t;
+      else { flush(); cur = wd; }
+      if (out.length >= rows) { more = true; break; }
+    }
+    if (out.length >= rows) { more = true; break; }
+    if (cur) flush();
+  }
+  if (cur && out.length < rows) out.push(cur);
+  g.fillStyle = css("fg");
+  out.slice(0, rows).forEach((line, i) => {
+    const last = i === rows - 1 && more, room = i ? w2 : w1;
+    g.fillText(fitText(last ? line + " \u2026" : line, room), i ? x2 : x1, y1 + i * lh);
+  });
+}
+function docBody(n, x, y, w, h, u) {  // what the crumb says, at the level that this card can hold
+  const prose = !n.mono, fs = Math.max(8.5, (prose ? 12 : 11) * Math.min(u, 1.05)), lh = fs * 1.4;
+  g.font = `${fs}px ${prose ? SANS : MONO}`;
+  const cw = prose ? g.measureText("abcdefghijklmnopqrstuvwxyz").width / 26 * 1.08 : g.measureText("M").width;
+  const cols = Math.floor(w / cw), rows = Math.floor(h / lh);
+  if (cols < 6 || rows < 1) return;
+  let s = null;
+  if (n.kind === "file") s = n.sum || "";
+  else if (n.say && rows * cols < 900) s = n.say;
+  else if (n.mono && rows * cols < 900 && n.gist != null) s = n.gist;
+  if (s === null) {
+    const tx = text(n, pick(n, cols * rows));
+    s = tx == null ? "\u2026" : tidy(tx, true);
+    if (n.mono && /^\{"\w+": ?"/.test(s)) s = s.replace(/^\{"\w+": ?"/, "").replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\t/g, "  ");
+  }
+  const lines = s.split("\n").flatMap(l => wrap(l, cols));
+  g.fillStyle = prose ? css("fg") : css("dim");
+  for (let i = 0; i < Math.min(rows, lines.length); i++) {
+    let line = lines[i];
+    if (line.length > cols || (i === rows - 1 && lines.length > rows)) line = line.slice(0, Math.max(0, cols - 1)) + "\u2026";
+    g.fillText(line, x, y + lh * (i + 0.8));
+  }
+}
+
+// -- data -----------------------------------------------------------------------------------------
+function load() {
+  api("graph").then(r => {
+    r.nodes.forEach(addRoot);
+    cueEdges.push(...r.edges.filter(e => e.kind === "cue"));
+    const top = Math.max(...cueEdges.map(e => e.w));
+    for (const e of cueEdges) e.k = e.w / top;  // 1 for the strongest link: a weak overlap still pulls
+    dirty = true;  // the tree and the radial tree hang from these links
+    msg(r.nodes.length + " sessions. Click a box to zoom in, click it again to go back. Wheel zooms, drag pans, arrows move.");
+  }).catch(err => msg(err.message + (KEY ? "" : " (no #k=token in the URL)")));
+}
+async function reveal(ids) {  // open the boxes along a path (session first) and zoom to the last
+  let n = nodes.get(ids[0]);
+  if (!n) { const r = await api("graph", {root: ids[0]}); n = addRoot(r.nodes[0]); }
+  if (n.kind === "sess" && n.session) {  // a session is a document: zoom to the card of the deepest crumb
+    doc(n);
+    const d = await n.docReady;
+    let k = null;
+    if (d && d.state === "ready") for (let i = ids.length - 1; i > 0 && !k; i--) k = d.byCrumb.get(ids[i]) || null;
+    const c = k && nodes.get(k);
+    if (c) {
+      c.glow = performance.now() + 5000;
+      if (stack.indexOf(n.key) < 0) { stack.length = 1; stack.push(n.key); }
+      if (stack[stack.length - 1] !== c.key) focus(c.key); else { manual = false; showTrail(); }
+      return;
+    }
+  }
+  for (const id of ids.slice(1)) {
+    const kids = await parts(n), k = kids.map(key => nodes.get(key)).find(k => k.id === id);
+    if (!k) break;
+    n = k;
+  }
+  n.glow = performance.now() + 5000;
+  if (stack[stack.length - 1] !== n.key) focus(n.key);
+}
+const revealId = id => api("path", {id}).then(ids => reveal(ids.length ? ids : [id])).catch(err => msg(err.message));
+let lastAgent = "";
+function follow() {
+  api("trail").then(async tr => {
+    const line = (tr.dropped ? "\u2026 \u203a " : "") + tr.stack.map(e => e.label).join(" \u203a ");
+    $("agent").textContent = tr.stack.length ? "Agent  " + line : "";
+    agentIds = tr.stack.map(e => e.id);
+    if (tr.session) ctxSid = tr.session;
+    const top = tr.stack.length ? tr.stack[tr.stack.length - 1].id : "";
+    if (!$("follow").checked || !top || top + line === lastAgent) return;
+    lastAgent = top + line;
+    const within = tr.stack.length > 1 ? tr.stack[tr.stack.length - 2].id : "";
+    let ids = await api("path", {id: top});
+    if (!ids.length && within) ids = await api("path", {id: top, within});
+    await reveal(ids.length ? ids : [top]);
+  }).catch(() => {});
+}
+function link(l) {  // a handle line: zoom to that part (its box is in the grid under the text)
+  parts(l.n).then(kids => {
+    const base = l.ref.split(":")[0], k = kids.map(key => nodes.get(key)).find(k => k.id === l.ref)
+      || kids.map(key => nodes.get(key)).find(k => k.id.split(":")[0] === base);
+    focus(k ? k.key : l.n.key);
+  });
+}
+
+// -- input ----------------------------------------------------------------------------------------
+function at(ex, ey) {
+  for (const l of links) if (ex >= l.x && ex <= l.x + l.w && ey >= l.y && ey <= l.y + l.h) return {link: l};
+  let best = null;
+  for (const b of boxes) if (ex >= b.x && ex <= b.x + b.w && ey >= b.y && ey <= b.y + b.h && (!best || b.depth >= best.depth)) best = b;
+  return best ? {node: best.n} : null;
+}
+let drag = null;
+cv.addEventListener("mousedown", e => { drag = {x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y, moved: false}; });
+addEventListener("mousemove", e => {
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (drag.moved) { manual = true; cam.x = tgt.x = drag.cx - dx / cam.k; cam.y = tgt.y = drag.cy - dy / cam.k; }
+    return;
+  }
+  const tip = $("tip");
+  if (e.target !== cv) { hover = null; tip.style.display = "none"; return; }
+  const hit = at(e.clientX, e.clientY);
+  hover = hit && hit.node ? hit.node : null;
+  cv.style.cursor = hit ? "pointer" : "default";
+  if (!hover) { tip.style.display = "none"; return; }
+  tip.textContent = hover.inDoc ? hover.tip : handle(hover) + (hover.title ? "\n" + hover.title : "");
+  Object.assign(tip.style, {display: "block", left: Math.min(e.clientX + 14, W - 300) + "px", top: e.clientY + 16 + "px"});
+});
+addEventListener("mouseup", e => {
+  const d = drag;
+  drag = null;
+  if (!d || d.moved) return;
+  const hit = at(e.clientX, e.clientY);
+  if (hit && hit.link) link(hit.link);
+  else if (hit && hit.node) {
+    ctxPin = ""; focus(hit.node.key);
+    if ($("side").classList.contains("on") && !hit.node.synthetic) show(hit.node.id, 1, false);
+  }
+});
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  manual = true;
+  const wx = (e.clientX - midX()) / cam.k + cam.x, wy = (e.clientY - midY()) / cam.k + cam.y;
+  const k = clamp(cam.k * Math.exp(-e.deltaY * 0.0015), 0.02, 1e6);
+  cam.x = tgt.x = wx - (e.clientX - midX()) / k; cam.y = tgt.y = wy - (e.clientY - midY()) / k; cam.k = tgt.k = k;
+}, {passive: false});
+addEventListener("keydown", e => {
+  if (e.target === $("q")) return;
+  if (e.key === "Escape" && $("side").classList.contains("on")) return side(false);
+  if (e.key === "Escape" || e.key === "Backspace") return back();
+  const dir = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
+  if (!dir) return;
+  e.preventDefault();
+  const cur = nodes.get(stack[stack.length - 1]), cx = cur ? sx(cur.x) : midX(), cy = cur ? sy(cur.y) : midY();
+  let best = null, bd = Infinity;  // Zoomed's "zoom near": the closest box of the same depth in that direction
+  const cb = boxes.find(b => b.n === cur), want = cb ? cb.depth : 0;
+  for (const b of boxes) {
+    const dx = b.x + b.w / 2 - cx, dy = b.y + b.h / 2 - cy;
+    if (b.n === cur || dx * dir[0] + dy * dir[1] <= 4 || b.depth !== want) continue;
+    const d = Math.hypot(dx, dy) + 2 * Math.abs(dx * dir[1] - dy * dir[0]);
+    if (d < bd) { bd = d; best = b.n; }
+  }
+  if (best) focus(best.key);
+});
+$("q").addEventListener("keydown", e => {
+  if (e.key !== "Enter" || !e.target.value.trim()) return;
+  api("find", {q: e.target.value, n: 12}).then(async groups => {
+    const now = performance.now();
+    for (const gr of groups) { const a = gr.session && nodes.get(gr.session); if (a) a.glow = now + 8000; }
+    msg(groups.length ? groups.length + " sessions hold hits; the first one is open" : "no match");
+    const first = groups.find(gr => gr.session);
+    if (!first) return;
+    const ids = await api("path", {id: first.hits[0].id});
+    await reveal(ids.length ? ids : [first.session]);
+  }).catch(err => msg(err.message));
+});
+for (const k of ["prompt", "narrative", "explore", "edit", "verify", "delegate", "result", "file"]) {
+  const e = document.createElement("span"); e.textContent = k; e.style.setProperty("--c", hsl(HUE[k], 1, 66)); $("legend").append(e);
+}
+$("home").onclick = () => { ctxPin = ""; stack.length = 1; manual = false; showTrail(); };
+for (const [k, [label, icon]] of Object.entries(LAYOUT)) {  // the layout switch; #layout=tree in the URL picks one too
+  const l = document.createElement("label");
+  l.className = "tool"; l.title = label + " layout";
+  l.innerHTML = `<input type="radio" name="lay" value="${k}"><svg class="i" viewBox="0 0 16 16">${icon}</svg><span>${label}</span>`;
+  l.firstChild.onchange = () => setLayout(k);
+  $("lay").append(l);
+}
+setLayout(HASH.get("layout") || ARG.get("layout") || localStorage.getItem("breadcrumbs.layout") || "grid");
+$("follow").checked = HASH.get("follow") === "1" || ARG.get("follow") === "1";
+function resize() {
+  DPR = devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+  BOTTOM = 24 + ($("ctx").classList.contains("on") ? $("ctx").offsetHeight : 0);
+  RIGHT = $("side").classList.contains("on") ? $("side").offsetWidth : 0;
+  $("side").style.bottom = BOTTOM + "px";
+  cv.width = W * DPR; cv.height = H * DPR;
+  g.font = FONT; CW = g.measureText("M").width;
+  dirty = true;  // the grid, the treemap and the rows of trees take the shape of the window
+  clearTimeout(resize.fit); resize.fit = setTimeout(trkFit, 100);  // and the Size charts take its width
+}
+new ResizeObserver(resize).observe(document.body);
+resize();
+let last = performance.now();
+function frame(t) {
+  const dt = Math.min(0.1, (t - last) / 1000);
+  last = t;
+  if (layout === "force") step(); else if (dirty) arrange();
+  place(1 - Math.exp(-dt * 7));
+  if (!manual) aimTop();
+  const q = 1 - Math.exp(-dt * 6);
+  cam.x += (tgt.x - cam.x) * q; cam.y += (tgt.y - cam.y) * q; cam.k = Math.exp(Math.log(cam.k) + (Math.log(tgt.k) - Math.log(cam.k)) * q);
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+// -- content in view: the side panel shows the text of what was picked, and the map zooms to it ------
+const el = (tag, cls, s) => { const e = document.createElement(tag); if (cls) e.className = cls; if (s != null) e.textContent = s; return e; };
+const said = new Map();  // "id@level" -> the promise of crumb(id, level).text
+function seen(id, level) {
+  const k = id + "@" + level;
+  if (!said.has(k)) said.set(k, api("crumb", {id, level}).then(r => r.text || "").catch(() => ""));
+  return said.get(k);
+}
+// A crumb's text as words: its own handle line goes, the handles of its parts keep their kind and title, and
+// a gap is "…". Ids and token counts are for machines; the tooltips of the map still give them.
+function tidy(s, own) {  // a handle that follows text on the same line starts a line of its own
+  return (s || "").replace(/([^\n])(?=\u25b8 \S+ \w+(?: "[^"\n]*")? \u00b7\d+t)/g, "$1\n").split("\n").filter((l, i) => !(i === 0 && own && /^\u25b8 /.test(l)))
+    .map(l => l.replace(/^(\s*)\u25b8 \S+ (\w+)(?: "(.*?)")? \u00b7\d+t(.*)$/, (_, a, k, t, r) => `${a}\u25b8 ${k} ${t || ""}${r}`.trimEnd())
+      .replace(/^(\s*)\u22ef .*$/, "$1\u2026")).join("\n").trim();
+}
+// One line for a bar or a card: its text lines, or else the titles of the parts that the model saw as handles.
+function flat(s) {
+  const ls = tidy(s, true).split("\n").map(l => l.trim()).filter(l => l && l !== "\u2026"), txt = ls.filter(l => !l.startsWith("\u25b8 "));
+  return txt.length ? txt.join(" ") : ls.map(l => l.replace(/^\u25b8 \w+\s*/, "")).filter(Boolean).join(" \u00b7 ");
+}
+const short = r => !r ? "" : (r.label || r.id).replace(/^\S+\s+(?=\S)/, "");
+function side(on) { $("side").classList.toggle("on", on); resize(); }
+function show(id, level = 1, zoom = true) {  // a crumb: what the model saw (at its level), and its whole text
+  const r = ctxRows.get(id), n = [...nodes.values()].find(n => n.id === id), kind = r ? r.kind : n ? n.kind : "text";
+  $("skind").style.setProperty("--c", color(kind)); $("skind").textContent = kind;
+  $("stitle").textContent = r ? short(r) : n ? (n.inDoc ? n.trail : name(n).slice(kind.length + 1)) : id;
+  const body = $("sbody"); body.textContent = "";
+  if (level < 1) {
+    const p = el("pre", null, "\u2026");
+    body.append(el("div", "kick", "What the model saw"), p);
+    seen(id, level).then(s => { p.textContent = tidy(s, true) || "\u25b8 its handle only"; });
+  }
+  const p = el("pre", null, "\u2026");
+  body.append(el("div", "kick", level < 1 ? "The whole crumb" : "The crumb"), p);
+  seen(id, 1).then(s => { p.textContent = tidy(s, true); });
+  $("smap").style.display = ""; $("smap").onclick = () => { ctxPin = ctxShown; revealId(id); };
+  side(true);
+  if (zoom) { ctxPin = ctxShown; revealId(id); }
+}
+function showEvent(e, i) {  // an event: the exact context that it gave the model (its receipt at level 1)
+  $("skind").style.setProperty("--c", EVC[e.ev]); $("skind").textContent = e.ev;
+  $("stitle").textContent = what(e, i);
+  const body = $("sbody"), p = el("pre", null, "\u2026"); body.textContent = "";
+  body.append(el("div", "kick", e.ev === "compress" ? "The compress" : "What it put in the context"), p);
+  seen(e.id, 1).then(s => { p.textContent = tidy(s, true) || "(no items)"; });
+  if (e.cap) body.append(el("div", "note", `The turn budget cut this ${e.ev}: the model got the first part and a handle to the rest.`));
+  const first = ctxData.rows.find(r => r.bars.some(b => b.from === i));
+  $("smap").style.display = first ? "" : "none"; $("smap").onclick = () => { if (first) { ctxPin = ctxShown; revealId(first.id); } };
+  side(true);
+}
+$("sclose").onclick = () => side(false);
+
+// -- context: the Gantt of context events and the Venn of what the context held (View.context, View.venn) --
+// The charts show content, not numbers. The Gantt has one row per crumb and one column per user turn, and
+// each column is headed by what the user said. A bar is one copy of a crumb in the context, and it holds
+// the text that the model saw at that copy's level. The chips under each turn are its events, named by
+// their query or by the crumbs that they opened. The Venn is not drawn as circles sized by bytes: each
+// region (recalled, found, opened and their overlaps) is a frame of the crumbs in it, each crumb as its
+// text. A click on a bar, a chip or a crumb puts its text in the side panel and zooms the map to it.
+// One colour per event. own and compress are SpaceGraph's choice: the earlier pair looked alike with protanopia.
+const EVC = {own: "#6c7086", recall: "#7aa2ff", find: "#4fd1c5", open: "#f6c177", compress: "#e64553"};
+const SETS = {recalled: "recall", found: "find", opened: "open"};
+let ctxSid = "", ctxShown = "", ctxPin = "", ctxKey = "", ctxAt = null, hiAt = null, ctxData = null, ctxRows = new Map();
+// ctxPin: a click in the context box zooms the map to a crumb of another session; the box stays on its own
+// session (ctxPin) until a click in the map or on Overview.
+// ctxAt: the event that a click picked (null: follow the last one); hiAt: the event that the Venn shows
+function what(e, i) {  // an event in words: its query, or the crumbs that it put in the context
+  if (e.ev === "compress") return "the context was compressed";
+  if (e.q) return "\u201c" + e.q + "\u201d";
+  const rs = ctxData.rows.filter(r => r.bars.some(b => b.from === i)).map(short);
+  return rs.length ? rs.slice(0, 2).join(", ") + (rs.length > 2 ? " and more" : "") : "";
+}
+function chip(e, i) {
+  const c = el("button", "chip" + (i === hiAt ? " on" : "") + (e.cap ? " cut" : ""));
+  c.style.setProperty("--c", EVC[e.ev]);
+  c.append(el("b", null, e.ev + (e.cap ? " (cut)" : "")), el("span", null, what(e, i)));
+  c.title = e.ev + " " + what(e, i) + (e.cap ? "\nThe turn budget cut it." : "");
+  c.onclick = () => { ctxAt = i; ctxKey = ""; context(); showEvent(e, i); };
+  return c;
+}
+function drawGantt(G) {
+  const box = $("gantt"), T = Math.max(1, G.turns.length, ...G.events.map(e => e.turn + 1));
+  const LW = 240, CWD = Math.max(130, Math.floor((box.clientWidth - LW - 2) / T)), cols = `${LW}px repeat(${T}, ${CWD}px)`;
+  const keep = [box.scrollLeft, box.scrollTop], head = el("div", "gh"), legend = el("div", "legend");
+  head.style.gridTemplateColumns = cols;
+  for (const [ev, c] of Object.entries(EVC)) { const s = el("span", null, ev); s.style.setProperty("--c", c); legend.append(s); }
+  const corner = el("div", "corner");
+  corner.append(el("div", "who", "What the model saw"), legend); head.append(corner);
+  const cells = [];
+  for (let t = 0; t < T; t++) {
+    const cell = el("div"), turn = G.turns.find(x => x.turn === t), q = el("div", "said", turn ? short(ctxRows.get(turn.crumb)) : "");
+    if (turn) seen(turn.crumb, 1).then(s => { const f = flat(s); if (f) q.textContent = "\u201c" + f + "\u201d"; });
+    const chips = el("div", "chips");
+    cell.append(el("div", "who", "The user said"), q, chips); head.append(cell); cells.push(chips);
+  }
+  G.events.forEach((e, i) => { if (cells[e.turn]) cells[e.turn].append(chip(e, i)); });
+  const body = el("div");
+  for (const r of G.rows) {
+    const row = el("div", "gr"), lab = el("div", "gl"), k = el("span", "gk", r.kind), track = el("div", "track");
+    row.style.gridTemplateColumns = cols; k.style.setProperty("--c", color(r.kind));
+    lab.append(k, el("span", "t", short(r)));
+    for (const e of G.events) if (e.ev === "compress") { const l = el("i", "cutline"); l.style.left = e.turn * CWD + "px"; track.append(l); }
+    for (const b of r.bars) {
+      const x0 = b.t0 * CWD + 3, x1 = (b.t1 === null ? T : b.t1) * CWD - 3, c = EVC[b.ev] || color(r.kind);
+      const bar = el("div", "bar" + (hiAt !== null && b.from === hiAt ? " on" : ""));
+      bar.style.cssText = `left:${x0}px;width:${Math.max(6, x1 - x0)}px;--c:${c};` +
+        `background:color-mix(in srgb,${c} ${Math.round(12 + 36 * Math.sqrt(b.level))}%,var(--card))`;
+      if (x1 - x0 > 48) seen(r.id, b.level).then(s => { bar.textContent = flat(s) || "\u25b8 " + short(r); });
+      bar.title = `${b.ev}: ${short(r)}` + (b.level < 1 ? "\nThe model saw part of it; click to read what." : "");
+      bar.onclick = ev => { ev.stopPropagation(); show(r.id, b.level); };
+      track.append(bar);
+    }
+    row.append(lab, track);
+    row.onclick = () => show(r.id, 1);
+    body.append(row);
+  }
+  box.textContent = ""; box.append(head, body);
+  [box.scrollLeft, box.scrollTop] = keep;
+}
+function levelAt(r, at) {  // the level of the copy that an event at or before `at` put in, while it is still there
+  let lv = 0;
+  for (const b of r ? r.bars : []) if (b.from !== null && b.from <= at && (b.to === null || b.to > at)) lv = Math.max(lv, b.level);
+  return lv || 1;
+}
+function drawVenn(v) {
+  const box = $("venn"), head = el("div", "vh"), e = v.at === null ? null : ctxData.events[v.at], w = el("div", "what");
+  head.append(el("div", "kick", "In the context after"));
+  if (e) { const t = el("span", "tag", e.ev); t.style.setProperty("--c", EVC[e.ev]); w.append(t, el("span", null, what(e, v.at))); }
+  else w.append(el("span", null, "no memory events yet"));
+  head.append(w);
+  if (e && e.cap) head.append(el("div", "note", `The turn budget cut this ${e.ev}.`));
+  box.textContent = ""; box.append(head);
+  const names = n => n.length === 1 ? n[0] + " only" : n.slice(0, -1).join(", ") + " and " + n[n.length - 1];
+  const regs = [...v.regions].sort((a, b) => b.in.length - a.in.length || a.in.join().localeCompare(b.in.join()));
+  for (const reg of regs) {
+    const f = el("section", "frame"), h = el("header"), cards = el("div", "cards");
+    f.style.setProperty("--c", EVC[SETS[reg.in[reg.in.length - 1]]]);
+    for (const n of reg.in) { const d = el("i"); d.style.setProperty("--c", EVC[SETS[n]]); h.append(d); }
+    h.append(el("span", null, names(reg.in)));
+    for (const id of reg.ids) {
+      const r = ctxRows.get(id), lv = levelAt(r, v.at), kind = r ? r.kind : "text";
+      const c = el("button", "card"), k = el("span", "k", ({turn: "T", sess: "S", span: "\u2317", tool: "\u2699", sum: "\u03a3", mem: "M"})[kind] || "\u00b6");
+      const t = el("span", "t", r ? short(r) : id);
+      k.style.setProperty("--c", color(kind)); c.append(k, t);
+      seen(id, lv).then(s => { const x = flat(s); if (x) t.textContent = x; });
+      c.title = r ? short(r) : id;
+      c.onclick = () => show(id, lv);
+      cards.append(c);
+    }
+    f.append(h, cards); box.append(f);
+  }
+  if (e && !regs.length) box.append(el("div", "empty", "Nothing recalled, found or opened since the last compress."));
+}
+function context() {
+  if (!$("ctxon").checked) return;
+  const top = nodes.get(stack[stack.length - 1]);
+  let sid = ctxPin || ctxSid;
+  if (!ctxPin) for (let n = top; n; n = n.parent !== null ? nodes.get(n.parent) : null) if (n.kind === "sess" && n.session) sid = n.session;
+  if (!sid) return;
+  if (sid !== ctxShown) { ctxShown = sid; ctxAt = null; }
+  Promise.all([api("context", {sid}), api("venn", ctxAt === null ? {sid} : {sid, at: ctxAt})]).then(([G, v]) => {
+    const key = sid + G.events.length + ":" + G.rows.length + ":" + innerWidth + ":" + ctxAt;
+    if (key === ctxKey) return;
+    ctxKey = key; ctxData = G; ctxRows = new Map(G.rows.map(r => [r.id, r])); hiAt = v.at;
+    drawGantt(G); drawVenn(v);
+  }).catch(err => msg(err.message));
+}
+// -- The size of the context. ACE writes one line per request to ace.log: the request before it (raw), the request
+// it sent, the model's own count of the one before, and what it did (pass, keep, fold, ratchet). A fold is a
+// point where the sent size drops. Four views of the same lines: a line, candles, a pie of the last request, and
+// the totals of every session. Colors follow the entity in every chart: sent blue, without ACE gray, the model's
+// count aqua, a fold orange.
+const TK = {sent: "#3987e5", raw: "#8a8a94", seen: "#199e70", fold: "#d95926", fixed: "#8a8a94", layer: "#9085e9", exact: "#d55181"};
+let trkMode = "selected", trkPin = "", trkKey = "", trkLast = null;  // trkLast: [data, note, width] of the last drawing
+const NS = "http://www.w3.org/2000/svg";
+const sv = (tag, a = {}, ...kids) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); e.append(...kids); return e; };
+const kfmt = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k" : String(Math.round(n));
+const pc = x => (x * 100).toFixed(x < 0.1 ? 1 : 0) + "%";
+const hms = ts => new Date(ts * 1000).toTimeString().slice(0, 8);
+const short6 = s => s.replace(/^local-/, "").slice(0, 8);
+function nice(max, n = 4) {  // the top and the ticks of an axis: steps of 1, 2 or 5 times a power of ten
+  const raw = max / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p, step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  const top = Math.ceil(max / step - 1e-9) * step, ticks = [];
+  for (let v = 0; v <= top + step / 1e6; v += step) ticks.push(v);
+  return {top, ticks};
+}
+function selectedSid() {  // the session of the box that the map is zoomed to (as context() picks it)
+  let sid = ctxPin || ctxSid;
+  if (!ctxPin) for (let n = nodes.get(stack[stack.length - 1]); n; n = n.parent !== null ? nodes.get(n.parent) : null) if (n.kind === "sess" && n.session) sid = n.session;
+  return sid;
+}
+function tip(box) {
+  const t = el("div", "tkt"); box.append(t);
+  return {show(lines, x, y) {
+    t.replaceChildren(...lines.map(l => el("div", null, l))); t.style.display = "block";
+    t.style.left = Math.max(4, Math.min(box.clientWidth - t.offsetWidth - 4, x + 12)) + "px"; t.style.top = Math.max(4, y - 8) + "px";
+  }, hide() { t.style.display = "none"; }};
+}
+function keyRow(items) {
+  const k = el("div", "key");
+  for (const [name, c, cls] of items) { const s = el("span"), i = el("i", cls); i.style.setProperty("--c", c); s.append(i, name); k.append(s); }
+  return k;
+}
+function axes(W, H, m, ymax, ticks, y) {
+  const g = sv("g");
+  for (const v of ticks) {
+    g.append(sv("line", {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1}));
+    g.append(sv("text", {x: m.l - 6, y: y(v) + 3.5, "text-anchor": "end"}, kfmt(v)));
+  }
+  return g;
+}
+function panel(cls, title, sub) {
+  const b = el("div", "pn " + cls); b.append(el("h5", null, title), el("div", "s", sub)); return b;
+}
+function trkGrid() {  // the columns of the charts (fewer in a narrow window) and the width of a chart that spans n of them
+  const inner = $("trk").clientWidth - 28, cols = inner >= 960 ? 3 : inner >= 640 ? 2 : 1, col = (inner - (cols - 1) * 10) / cols;
+  return {cols, w: n => Math.max(200, Math.floor(Math.min(n, cols) * col + (Math.min(n, cols) - 1) * 10 - 26))};
+}
+// the line: sent, without ACE, the model's count, the target, and a mark on each fold
+function lineChart(d) {
+  const pts = d.points, box = panel("w2", "Context size by request", "Tokens in each request. A fold is where the sent size drops.");
+  const W = trkGrid().w(2), H = 236, m = {l: 44, r: 62, t: 12, b: 24};
+  if (!pts.length) { box.append(el("div", "empty", "No requests logged for this session.")); return box; }
+  const goal = Math.max(...pts.map(p => p.target || 0)), {top: ymax, ticks} = nice(Math.max(goal, ...pts.map(p => p.sent)) * 1.06);
+  const px = i => m.l + (pts.length < 2 ? 0 : i / (pts.length - 1)) * (W - m.l - m.r), y = v => H - m.b - Math.min(v, ymax) / ymax * (H - m.t - m.b);
+  const s = sv("svg", {viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
+    "aria-label": `Context size over ${pts.length} requests, ${pts.filter(p => p.act === "fold").length} folds`});
+  s.append(axes(W, H, m, ymax, ticks, y));
+  for (const i of new Set([0, Math.floor((pts.length - 1) / 2), pts.length - 1]))
+    s.append(sv("text", {x: px(i), y: H - 6, "text-anchor": i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}, hms(pts[i].ts)));
+  const path = (f, v) => pts.map((p, i) => f(p) == null ? null : (i && pts[i - 1] && f(pts[i - 1]) != null ? "L" : "M") + px(i).toFixed(1) + " " + y(v(p)).toFixed(1)).filter(Boolean).join(" ");
+  let tp = "";  // the target is a step line: a ratchet raises it
+  pts.forEach((p, i) => { if (p.target) tp += (tp ? "H" + px(i).toFixed(1) + "V" + y(p.target).toFixed(1) : "M" + px(i).toFixed(1) + " " + y(p.target).toFixed(1)); });
+  if (tp) s.append(sv("path", {d: tp + `H${px(pts.length - 1).toFixed(1)}`, fill: "none", stroke: "var(--faint)", "stroke-width": 1.5}));
+  s.append(sv("path", {d: path(p => p.raw, p => p.raw), fill: "none", stroke: TK.raw, "stroke-width": 1.5, opacity: .75}));
+  s.append(sv("path", {d: path(p => p.seen, p => p.seen), fill: "none", stroke: TK.seen, "stroke-width": 1.5}));
+  s.append(sv("path", {d: path(p => p.sent, p => p.sent), fill: "none", stroke: TK.sent, "stroke-width": 2, "stroke-linejoin": "round"}));
+  for (const p of pts) if (p.act === "fold" || p.act === "ratchet") {
+    s.append(sv("circle", {cx: px(p.i), cy: y(p.sent), r: 6.5, fill: "var(--card)"}));
+    s.append(sv("circle", {cx: px(p.i), cy: y(p.sent), r: 4.5, fill: p.act === "fold" ? TK.fold : "var(--card)", stroke: TK.fold, "stroke-width": 2}));
+  }
+  const last = pts[pts.length - 1], over = last.raw > ymax;
+  s.append(sv("text", {x: px(pts.length - 1) + 8, y: y(last.sent) + 4, class: "v"}, kfmt(last.sent)));
+  const ry = Math.abs(y(last.raw) - y(last.sent)) < 13 ? y(last.raw) - 12 : y(last.raw);
+  s.append(sv("text", {x: px(pts.length - 1) + 8, y: ry + 4}, kfmt(last.raw) + (over ? " ↑" : "")));
+  if (last.target) s.append(sv("text", {x: W - m.r + 8, y: y(last.target) - 6}, "target " + kfmt(last.target)));
+  const cross = sv("line", {y1: m.t, y2: H - m.b, stroke: "var(--dim)", "stroke-width": 1, opacity: 0}), dot = sv("circle", {r: 4.5, fill: TK.sent, stroke: "var(--card)", "stroke-width": 2, opacity: 0});
+  const hit = sv("rect", {x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent"});
+  s.append(cross, dot, hit); box.append(s);
+  const t = tip(box);
+  hit.addEventListener("mousemove", e => {
+    const r = s.getBoundingClientRect(), mx = (e.clientX - r.left) * W / r.width, i = Math.max(0, Math.min(pts.length - 1, Math.round((mx - m.l) / (W - m.l - m.r) * (pts.length - 1)))), p = pts[i];
+    cross.setAttribute("x1", px(i)); cross.setAttribute("x2", px(i)); cross.setAttribute("opacity", .6);
+    dot.setAttribute("cx", px(i)); dot.setAttribute("cy", y(p.sent)); dot.setAttribute("opacity", 1);
+    const bx = box.getBoundingClientRect();
+    t.show([`request ${p.i + 1} · ${hms(p.ts)} · ${p.act}`, `sent ${p.sent.toLocaleString()}` + (p.target ? ` (${pc(p.sent / p.target)} of the target)` : ""),
+      `without ACE ${p.raw.toLocaleString()}`, p.seen ? `the model counted ${p.seen.toLocaleString()}` : "the model's count: not yet",
+      p.act === "fold" || p.act === "ratchet" ? (p.drop ? `cut ${pc(p.drop)} of the request before` : "no cut: the request had not grown") + ` · ${p.crumbs} crumbs` : `${p.crumbs} crumbs in the layer`],
+      e.clientX - bx.left, e.clientY - bx.top);
+  });
+  hit.addEventListener("mouseleave", () => { t.hide(); cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); });
+  const keys = [["sent", TK.sent], ["without ACE", TK.raw], ["the model's count", TK.seen], ["target", "var(--faint)"], ["fold", TK.fold, "d"]];
+  if (pts.some(p => p.act === "ratchet")) keys.push(["target raised (ratchet)", TK.fold, "r"]);  // a ring, as on the line
+  box.append(keyRow(keys));
+  return box;
+}
+// candles: open, high, low and close of the sent size over a run of requests; orange when the run holds a fold
+function candleChart(d) {
+  const cs = d.candles, box = panel("", "Candles", `Open, high, low, close of the sent size, ${cs.length ? cs[0].n : 0} request${cs.length && cs[0].n > 1 ? "s" : ""} each.`);
+  const W = trkGrid().w(1), H = 236, m = {l: 40, r: 8, t: 12, b: 24};
+  if (!cs.length) { box.append(el("div", "empty", "No requests logged.")); return box; }
+  const goal = d.target || 0, {top: ymax, ticks} = nice(Math.max(goal, ...cs.map(c => c.high)) * 1.06), y = v => H - m.b - Math.min(v, ymax) / ymax * (H - m.t - m.b);
+  const step = (W - m.l - m.r) / cs.length, bw = Math.min(18, Math.max(3, step - 3));
+  const s = sv("svg", {viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": `${cs.length} candles of the sent context size`});
+  s.append(axes(W, H, m, ymax, ticks, y));
+  if (goal) s.append(sv("line", {x1: m.l, x2: W - m.r, y1: y(goal), y2: y(goal), stroke: "var(--faint)", "stroke-width": 1.5}));
+  const t = tip(box), acts = c => {  // the folds and the ratchets of a run (ACE logs both; only a fold cuts)
+    const run = d.points.slice(c.i0, c.i1 + 1);
+    return [run.filter(p => p.act === "fold").length, run.filter(p => p.act === "ratchet").length];
+  };
+  cs.forEach((c, k) => {
+    const [nf, nr] = acts(c), cx = m.l + (k + .5) * step, col = nf ? TK.fold : TK.sent, g = sv("g");
+    g.append(sv("line", {x1: cx, x2: cx, y1: y(c.high), y2: y(c.low), stroke: col, "stroke-width": 2, "stroke-linecap": "round"}));
+    const top = y(Math.max(c.open, c.close)), h = Math.max(2, Math.abs(y(c.open) - y(c.close)));
+    g.append(sv("rect", {x: cx - bw / 2, y: top, width: bw, height: h, rx: 2, fill: col}));
+    const hit = sv("rect", {x: cx - step / 2, y: m.t, width: step, height: H - m.t - m.b, fill: "transparent"});
+    hit.addEventListener("mousemove", e => { const bx = box.getBoundingClientRect();
+      t.show([`requests ${c.i0 + 1}–${c.i1 + 1} · ${hms(c.ts0)}`, `open ${c.open.toLocaleString()}`, `high ${c.high.toLocaleString()}`, `low ${c.low.toLocaleString()}`,
+        `close ${c.close.toLocaleString()}`, (nf ? `${nf} fold${nf > 1 ? "s" : ""} in this run` : "no fold in this run") + (nr ? ` · target raised ${nr > 1 ? nr + " times" : "once"}` : "")],
+        e.clientX - bx.left, e.clientY - bx.top); });
+    hit.addEventListener("mouseleave", () => t.hide());
+    g.append(hit); s.append(g);
+  });
+  s.append(sv("text", {x: m.l, y: H - 6}, hms(cs[0].ts0)), sv("text", {x: W - m.r, y: H - 6, "text-anchor": "end"}, hms(cs[cs.length - 1].ts1)));
+  box.append(s, keyRow([["no fold", TK.sent, "b"], ["a fold in this run", TK.fold, "b"], ["wick: high to low", "var(--dim)"], ["target", "var(--faint)"]]));
+  const det = el("details"), tb = el("table", "tbl");
+  det.append(el("summary", null, "Table"), tb);
+  tb.append(Object.assign(el("tr"), {innerHTML: "<th>requests</th><th>open</th><th>high</th><th>low</th><th>close</th><th>folds</th>"}));
+  for (const c of cs.slice(-12)) tb.append(Object.assign(el("tr"), {innerHTML: `<td>${c.i0 + 1}–${c.i1 + 1}</td><td>${c.open}</td><td>${c.high}</td><td>${c.low}</td><td>${c.close}</td><td>${acts(c)[0]}</td>`}));
+  box.append(det);
+  return box;
+}
+// the pie: what the last request held, and the rest of the chat behind it
+function pieChart(d) {
+  const mix = d.mix, box = panel("", "What the last request held", "The pie is the whole chat so far, in tokens.");
+  if (!mix) { box.append(el("div", "empty", "No request yet.")); return box; }
+  const parts = [["fixed part (prompt, tools)", mix.base, TK.fixed], ["layer (crumbs)", mix.layer, TK.layer], ["exact turns", mix.exact, TK.exact], ["held back, one crumb call away", mix.held, "held"]];
+  const total = parts.reduce((a, p) => a + p[1], 0) || 1, R = 66, C = 72, wrap = el("div", "pie");
+  const s = sv("svg", {viewBox: `0 0 ${C * 2} ${C * 2}`, width: C * 2, height: C * 2, role: "img", "aria-label": "Share of the whole chat by part: " + parts.map(p => `${p[0]} ${pc(p[1] / total)}`).join(", ")});
+  let a0 = -Math.PI / 2;
+  const nz = parts.filter(p => p[1] > 0);
+  for (const [name, v, c] of parts) {
+    if (v <= 0) continue;
+    const fill = c === "held" ? "rgba(138,138,148,.16)" : c, st = c === "held" ? "var(--line2)" : "var(--card)";
+    let node;
+    if (nz.length === 1) node = sv("circle", {cx: C, cy: C, r: R, fill, stroke: st, "stroke-width": 2});
+    else {
+      const a1 = a0 + v / total * 2 * Math.PI, big = a1 - a0 > Math.PI ? 1 : 0;
+      node = sv("path", {d: `M${C} ${C}L${C + R * Math.cos(a0)} ${C + R * Math.sin(a0)}A${R} ${R} 0 ${big} 1 ${C + R * Math.cos(a1)} ${C + R * Math.sin(a1)}Z`, fill, stroke: st, "stroke-width": 2, "stroke-linejoin": "round"});
+      a0 = a1;
+    }
+    node.append(sv("title", {}, `${name}: ${v.toLocaleString()} tokens (${pc(v / total)})`)); s.append(node);
+  }
+  const tb = el("table");
+  for (const [name, v, c] of parts) {
+    const r = el("tr"), k = el("td"), i = el("i");
+    i.style.setProperty("--c", c === "held" ? "rgba(138,138,148,.35)" : c); k.append(i, name);
+    r.append(k, el("td", "n", kfmt(v)), el("td", "n", pc(v / total))); tb.append(r);
+  }
+  wrap.append(s, tb); box.append(wrap);
+  box.append(el("div", "s", `Sent ${mix.sent.toLocaleString()} of ${mix.raw.toLocaleString()} tokens.` + (mix.unknown.length ? " Older lines do not log " + mix.unknown.join(" or ") + "." : "")));
+  return box;
+}
+// the cut sizes of every fold in the log: the design aims at about a tenth
+function cutChart(d) {
+  const a = d.all, box = panel("", "How hard folds cut", "Share of the request before that a fold removed, every session in the log.");
+  const labels = ["< 5%", "5–10%", "10–20%", "20–40%", "40%+"], W = trkGrid().w(1), H = 150, m = {l: 26, r: 6, t: 16, b: 22};
+  const {top: ymax, ticks} = nice(Math.max(1, ...a.bins) * 1.05, 3), y = v => H - m.b - v / ymax * (H - m.t - m.b);
+  const s = sv("svg", {viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": "Folds by the share of the request that they cut: " + a.bins.map((b, i) => `${labels[i]} ${b}`).join(", ")});
+  s.append(axes(W, H, m, ymax, ticks, y));
+  const step = (W - m.l - m.r) / a.bins.length, bw = Math.min(24, step - 8), t = tip(box);
+  a.bins.forEach((n, i) => {
+    const cx = m.l + (i + .5) * step, col = i < 2 ? TK.sent : TK.fold, h = Math.max(n ? 2 : 0, y(0) - y(n));
+    if (n) s.append(sv("path", {d: `M${cx - bw / 2} ${y(0)}V${y(0) - h + 4}Q${cx - bw / 2} ${y(0) - h} ${cx - bw / 2 + 4} ${y(0) - h}H${cx + bw / 2 - 4}Q${cx + bw / 2} ${y(0) - h} ${cx + bw / 2} ${y(0) - h + 4}V${y(0)}Z`, fill: col}));
+    s.append(sv("text", {x: cx, y: y(0) - h - 4, "text-anchor": "middle", class: "v"}, n || ""), sv("text", {x: cx, y: H - 6, "text-anchor": "middle"}, labels[i]));
+    const hit = sv("rect", {x: cx - step / 2, y: m.t, width: step, height: H - m.t - m.b, fill: "transparent"});
+    hit.addEventListener("mousemove", e => { const bx = box.getBoundingClientRect(); t.show([`folds that cut ${labels[i]}`, `${n} of ${a.folds}`], e.clientX - bx.left, e.clientY - bx.top); });
+    hit.addEventListener("mouseleave", () => t.hide()); s.append(hit);
+  });
+  box.append(s, keyRow([["10% or less: a gentle fold", TK.sent, "b"], ["more than 10%", TK.fold, "b"]]));
+  box.append(el("div", "s", a.median_cut == null ? "No fold yet." : `Median cut ${pc(a.median_cut)}. The first fold of a session has no gain measured yet and cuts more.`));
+  return box;
+}
+// the totals: how each session spent its requests
+function sessionBars(d) {
+  const rows = d.all.rows.slice(0, 8), box = panel("", "Sessions in the log", "Requests by what ACE did. Click one to chart it.");
+  const mx = Math.max(1, ...rows.map(r => r.n));
+  for (const r of rows) {
+    const b = el("div", "rowb" + (r.sess === d.session ? " on" : "")), bar = el("div", "bar2");
+    b.title = `${r.sess}\n${r.n} requests, ${r.folds} folds, largest ${r.max_sent.toLocaleString()} tokens\n${hms(r.t0)} – ${hms(r.t1)}`;
+    for (const [act, c] of [["pass", TK.raw], ["keep", TK.sent], ["fold", TK.fold], ["ratchet", TK.fold]]) {
+      const n = r.acts[act] || 0; if (!n) continue;
+      const i = el("i"); i.style.cssText = `width:${n / mx * 100}%;--c:${c}` + (act === "ratchet" ? ";opacity:.55" : ""); bar.append(i);
+    }
+    b.append(el("span", "id", short6(r.sess)), bar, el("span", "n", r.n));
+    b.onclick = () => { trkMode = "pin"; trkPin = r.sess; trkKey = ""; trk(); };
+    box.append(b);
+  }
+  box.append(keyRow([["pass", TK.raw, "b"], ["keep", TK.sent, "b"], ["fold", TK.fold, "b"], ["ratchet", "rgba(217,89,38,.55)", "b"]]));  // as the bars: a ratchet is the faded fold color
+  const a = d.all;
+  box.append(el("div", "s", `${a.requests} requests, ${a.folds} folds` + (a.cache_kept == null ? "" : `; ${pc(a.cache_kept)} of the requests after the first fold kept the layer`) + "."));
+  return box;
+}
+function tiles(d) {
+  const pts = d.points, last = pts[pts.length - 1], cuts = pts.filter(p => p.act === "fold" && p.i).map(p => p.drop).sort((a, b) => a - b);
+  const keeps = pts.filter(p => p.act === "keep").length, folds = pts.filter(p => p.act === "fold").length, t = el("div", "tiles");
+  const add = (v, l) => { const x = el("div", "tile"); x.append(el("div", "v", v), el("div", "l", l)); t.append(x); };
+  add(last ? kfmt(last.sent) : "–", last && last.target ? `sent now, ${pc(last.sent / last.target)} of the ${kfmt(last.target)} target` : "sent now");
+  add(last ? kfmt(last.raw) : "–", "without ACE");
+  add(folds, "folds in this session");
+  add(cuts.length ? pc(cuts[Math.floor(cuts.length / 2)]) : "–", "median cut of a fold");
+  add(keeps + folds ? pc(keeps / (keeps + folds)) : "–", "requests that kept the layer");
+  return t;
+}
+function drawTrk(d, note) {
+  const box = $("trk"), keep = [box.scrollLeft, box.scrollTop], head = el("div", "tkh"), pills = el("div", "pills");
+  for (const [mode, name] of [["selected", "Selected session"], ["current", "Current session"]]) {
+    const b = el("button", "pill" + (trkMode === mode ? " on" : ""), name);
+    b.onclick = () => { trkMode = mode; trkKey = ""; trk(); }; pills.append(b);
+  }
+  if (trkMode === "pin") pills.append(el("button", "pill on", short6(trkPin)));
+  head.append(el("h4", null, "Context size"), pills, el("span", "sub", d.session ? `${d.session} · ${d.points.length} requests` + (d.session === d.current ? " · the current session" : "") : "ace.log has no request yet"));
+  if (note) head.append(el("span", "tkn", note));
+  const grid = el("div", "tk c" + trkGrid().cols);
+  grid.append(lineChart(d), candleChart(d), pieChart(d), cutChart(d), sessionBars(d));
+  box.textContent = ""; box.append(head, tiles(d), grid);
+  [box.scrollLeft, box.scrollTop] = keep;
+  trkLast = [d, note, box.clientWidth];
+}
+const trkKeyOf = (d, note) => { const p = d.points[d.points.length - 1]; return [d.session, d.points.length, p ? p.ts : 0, d.all.requests, $("trk").clientWidth, trkMode, note].join(":"); };
+function trkFit() {  // the window changed size: draw the last data again at the new width now (the 2 s timer would lag)
+  if (!$("trkon").checked || !trkLast || $("trk").clientWidth === trkLast[2]) return;
+  trkKey = trkKeyOf(trkLast[0], trkLast[1]); drawTrk(trkLast[0], trkLast[1]);
+}
+function trk() {
+  if (!$("trkon").checked) return;
+  const sel = selectedSid(), want = trkMode === "current" ? "" : trkMode === "pin" ? trkPin : sel;
+  api("ace", {sid: want}).then(d => {
+    if (d.session || !want) return [d, ""];
+    return api("ace", {}).then(c => [c, `No ace.log lines for ${short6(want)}: showing the current session.`]);
+  }).then(([d, note]) => {
+    const key = trkKeyOf(d, note);
+    if (key === trkKey) return;
+    trkKey = key; drawTrk(d, note);
+  }).catch(err => msg(err.message));
+}
+function ctxMode() { $("ctx").classList.toggle("on", $("ctxon").checked || $("trkon").checked); $("ctx").classList.toggle("trk", $("trkon").checked); }
+$("ctxon").addEventListener("change", () => { if ($("ctxon").checked) $("trkon").checked = false; ctxMode(); resize(); ctxKey = ""; context(); });
+$("trkon").addEventListener("change", () => { if ($("trkon").checked) $("ctxon").checked = false; ctxMode(); resize(); ctxKey = ""; trkKey = ""; context(); trk(); });
+$("ctxon").checked = HASH.get("context") === "1";
+$("trkon").checked = HASH.get("size") === "1" || HASH.get("track") === "1";
+if ($("trkon").checked) $("ctxon").checked = false;
+ctxMode();
+resize();
+showTrail(); load(); follow(); setInterval(follow, 2000); setInterval(context, 2000); setInterval(trk, 2000); trk();
+const start = HASH.get("focus");
+if (start) setTimeout(() => revealId(start), 600);
+requestAnimationFrame(frame);
+</script></body></html>
