@@ -6,7 +6,7 @@ registration happen once, whichever import comes first.
     ports      neighbor dial state codebase profile hide blocked  (for the viewers, the hive and the searches)
     commands   ace dials ingest-hermes sources seats seat no-vis  (island, seats, dials, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
-    harness    hermes  (the entry of the harness table of core.py)
+    harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`)
 
 Each function imports its module when it is called, not before: a command loads only the modules that it needs, and a
 patched name of a module (a test) is read at the call.
@@ -330,6 +330,13 @@ def _install(args, home):
     return 0
 
 
+def _source(path):
+    """The sessions of a state.db for `ingest hermes [PATH]`; no PATH: the state.db of the default profile."""
+    from breadcrumbs import cli
+    from . import hermes_ingest
+    return hermes_ingest.sessions(path or os.path.join(cli.profile_home("default"), "state.db"))
+
+
 def _setup(cmd):
     return "# ~/.hermes/config.yaml\nmcp_servers:\n  breadcrumbs:\n    command: %s\n    args: %s" % (
         cmd[0], json.dumps(cmd[1:]))
@@ -352,4 +359,4 @@ if ports.layer("hermes", __file__):
     ports.command("seats", _add_seats, _seats, before="hive")
     ports.command("seat", _add_seat, _seat, before="hive")
     ports.command("no-vis", _add_novis, _novis, after="hive", hidden=True)
-    ports.harness("hermes", "Hermes", ("hermes",), _setup, order=10)
+    ports.harness("hermes", "Hermes", ("hermes",), _setup, order=10, source=_source)

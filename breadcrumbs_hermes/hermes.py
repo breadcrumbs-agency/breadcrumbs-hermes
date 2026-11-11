@@ -179,16 +179,6 @@ def _context_bytes(messages):
     return n
 
 
-def _config(root):
-    """The provider's own config (<root>/config.json, written by hermes memory setup); {} when absent."""
-    try:
-        with open(os.path.join(root, "config.json"), encoding="utf-8") as f:
-            cfg = json.load(f)
-    except (OSError, ValueError):
-        return {}
-    return cfg if isinstance(cfg, dict) else {}
-
-
 # A ref as a handle or the dispatch handbook writes it: an id (eight hex digits, then .N after a CRC clash) or
 # id:a-b (lines of a document). A longer run of letters or digits is no ref.
 REF = re.compile(r"(?<![0-9A-Za-z_.])([0-9a-f]{8}(?:\.\d+)?)(?::\d{1,9}-\d{1,9})?(?![0-9A-Za-z_])")
@@ -280,7 +270,7 @@ class BreadcrumbsProvider(MemoryProvider):
             saved = True
         except (OSError, ValueError, KeyError):
             pass
-        cfg = _config(self.root)
+        cfg = dials.config(self.root)
         self._dial(cfg, saved)
         name = self._slot_name(cfg)
         if self.slot is not None and self.slot.name != name:
@@ -380,7 +370,7 @@ class BreadcrumbsProvider(MemoryProvider):
         """The slot, loaded but not started, before initialize: MemoryManager.add_provider routes tool calls by
         the tool list it reads then, before initialize_all."""
         root = os.path.join(self._hermes_home(), "breadcrumbs")
-        name = self._slot_name(_config(root))
+        name = self._slot_name(dials.config(root))
         return Slot.load_named(name, lambda msg: self._log(msg, root)) if name else None
 
     def _setup_slot(self, home=None):
@@ -389,7 +379,7 @@ class BreadcrumbsProvider(MemoryProvider):
         if self.slot is not None:
             return self.slot
         root = os.path.join(str(home or self._hermes_home()), "breadcrumbs")
-        name = self._slot_name(_config(root))
+        name = self._slot_name(dials.config(root))
         if name and (self._setup is None or self._setup.name != name):
             self._setup = Slot.load_named(name, lambda msg: self._log(msg, root), setup=True)
         return self._setup if name else None
