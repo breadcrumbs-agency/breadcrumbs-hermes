@@ -5,6 +5,7 @@ registration happen once, whichever import comes first.
 
     ports      neighbor dial state codebase profile hide blocked  (for the viewers, the hive and the searches)
                price  (the rates of a model, for the cache metrics: breadcrumbs/usage.py)
+               ace_join  (each ace.log line with the request that it shaped: ace.join)
     commands   ace dials ingest-hermes sources seats seat no-vis  (island, seats, dials, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`)
@@ -171,6 +172,12 @@ def _price(model, provider):
         except Exception:  # no Hermes here, or its table failed: no price
             _PRICES[key] = None
     return _PRICES[key]
+
+
+def _ace_join(lines, requests):
+    """The port ace_join (breadcrumbs/usage.py AFTER): each ace.log line with the main request that it shaped (ace.join)."""
+    from .ace import join
+    return join(lines, requests)
 
 
 def _stored(home, fn):
@@ -371,6 +378,7 @@ if ports.layer("hermes", __file__):
     ports.give("hide", _hide)
     ports.give("blocked", _blocked)
     ports.give("price", _price)
+    ports.give("ace_join", _ace_join)
     ports.command("ace", _add_ace, _ace, after="log")
     ports.command("dials", _add_dials, _dials, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")

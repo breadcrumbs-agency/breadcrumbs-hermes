@@ -41,6 +41,7 @@ compress() makes the same fold on the stored history, with no model call.
 Turn it on for a profile: hermes -p PROFILE config set context.engine breadcrumbs
 (memory.provider breadcrumbs gives the crumb tool that opens the handles).
 """
+import bisect
 import collections
 import heapq
 import json
@@ -83,6 +84,8 @@ WRITE_RE = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(?:commit|merge|push|apply|am|ch
 REDIRECT_RE = re.compile(r"(?<![\d&>=-])>>?\s*(?![&=\d]|/dev/null)[\w./~$\"'{]")  # a shell writes a file
 LOG_BYTES = 1 << 20                 # ace.log turns over to ace.log.1 at this size
 LOG_SESS = 24                       # a log line holds this many characters of the session id
+JOIN_SECONDS = 120                  # join(): a line's request starts at most this many seconds after it
+JOIN_TICK = 1                       # join(): the step of the stamps of ace.log and usage.log (whole seconds)
 HALF = 12                           # recency half-life, in turns
 ROLE_WEIGHT = {"user": 2.0, "assistant": 1.5, "tool": 1.0, "call": 0.5}
 CRUMB_TOOLS = ("crumb", "mcp__crumb")
@@ -343,6 +346,40 @@ def status_lines(root, n=6):
         over = f"  OVER by {sent - target:,}" if sent > target else ""
         out.append(f"{ts}  {sess:<24} {act:<9} in {size:>9,}  sent {sent:>9,}  target {target:>9,}  "
                    f"{100 * sent // max(1, target):>3}%  folds {folds}{'  gear ' + gear if gear else ''}{over}")
+    return out
+
+
+def join(lines, requests):
+    """Each line of ace.log with the model request that it shaped: the first main request (usage.log, task main) of
+    its session that starts at or after the line, and starts within JOIN_SECONDS of it. ace.log writes its line at the
+    START of a request and usage.log at the END, so the start of a request is its stamp less its dur. Both stamps
+    are whole seconds (cut down), so a start can show as up to JOIN_TICK before the stamp of the line written before
+    it: a request joins when its start + JOIN_TICK is after the line. (By end time, a line written in the second that
+    request R ended joined R, not the request after R that it shaped.) A request with no dur starts at its stamp.
+    A line holds the session id cut to LOG_SESS characters and a request the whole id, so they join by that prefix.
+    lines: rows with sess, ts (and act); requests: rows with sess, ts, task (and req, dur), as the viewer reads the
+    two logs. Requests of one second are ordered by req id, then as given.
+    -> [(line, request)] in the order of lines; a line with no such request is left out. The port ace_join."""
+    seqs = {}
+    for n, r in enumerate(requests):
+        if (r.get("task") or "main") == "main":
+            seqs.setdefault(str(r["sess"])[:LOG_SESS], []).append((r["ts"], r.get("req") or "", n, r))
+    times = {}
+    for key, seq in seqs.items():
+        seq.sort(key=lambda e: e[:3])
+        times[key] = [e[0] for e in seq]
+    out = []
+    for line in lines:
+        key = str(line["sess"])[:LOG_SESS]
+        if key in ("", "-") or key not in seqs:  # "-": a line of an engine with no session id
+            continue
+        # a request that ends JOIN_TICK or more before the line also starts before it: skip those by the end stamp
+        for ts, _, _, r in seqs[key][bisect.bisect_right(times[key], line["ts"] - JOIN_TICK):]:
+            start = ts - float(r.get("dur") or 0)
+            if start + JOIN_TICK > line["ts"]:
+                if start - line["ts"] <= JOIN_SECONDS:
+                    out.append((line, r))
+                break
     return out
 
 

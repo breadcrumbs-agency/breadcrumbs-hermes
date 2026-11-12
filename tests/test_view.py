@@ -413,7 +413,9 @@ SECRET = "SECRET-TEXT-X"  # planted in every text column of the fixture state.db
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SONNET, OPUS, HAIKU = "claude-sonnet-5-5", "claude-opus-5", "claude-haiku-5"
 REPO_A, REPO_B = "/Users/demo/code/home-notes", "/Users/demo/code/bike-fix"  # made-up codebases
-FIELD_MEASURE = {f: m for m, f in view.USAGE_FIELD.items()}  # a field of a usage line -> the measure that sums it
+# a field of a usage line -> the measure that sums it; the key of a measure -> itself (the parts of the ratios of the
+# cache writes beside the ACE acts are measures: cw_after_fold / acts_fold)
+FIELD_MEASURE = {**{m["key"]: m["key"] for m in view.MEASURES}, **{f: m for m, f in view.USAGE_FIELD.items()}}
 FAKE_RATES = {SONNET: (3, 0.3, 3.75), OPUS: (15, 1.5, 18.75)}  # made-up rates (USD per 1M: input, cache read, cache write); none for HAIKU
 
 
@@ -544,15 +546,15 @@ def build_fixture(home, far_days=0, secret=SECRET, spread=100):
         {"sid": "parser", "model": SONNET, "t0": span["parser"][0], "est": 0.12, "status": "estimated", "source": "provider_models_api"},
         {"sid": "ghost", "model": OPUS, "t0": far, "t1": far + 1800, "est": 1.5, "status": "estimated", "source": "provider_models_api"}]
     state_db(os.path.join(home, "state.db"), sessions, usage, secret)
-    # ace.log: eight requests of 'today' (two folds) and six of its continuation; usage.log: the provider's count of each,
-    # a chat that went from Sonnet to Opus, the calls of two auxiliary tasks, and two helpers
+    # ace.log: eight requests of 'today' (two folds) and six of its continuation (one fold, the last a ratchet); usage.log:
+    # the provider's count of each, a chat that went from Sonnet to Opus, the calls of two auxiliary tasks, and two helpers
     ace, use = {"today": [], "today-cont": []}, {"today": [], "today-cont": [], "today-h1": [], "today-h2": [], "today-cont-h": []}
     plan = [("pass", 400, 400), ("pass", 700, 700), ("pass", 990, 990), ("fold", 1200, 700), ("keep", 1300, 800),
             ("keep", 1500, 950), ("keep", 1700, 1010), ("fold", 1900, 880)]
     for sid, start, model_of in (("today", t0 + 5, lambda k: SONNET if k < 5 else OPUS),
                                  ("today-cont", t1 + 6 * H + 5, lambda k: OPUS)):
         step = spread if sid == "today" else 3 * spread + 300  # 600 at the default spread
-        for k, (act, raw, sent) in enumerate(plan[:8 if sid == "today" else 6]):
+        for k, (act, raw, sent) in enumerate(plan[:8] if sid == "today" else plan[:5] + [("ratchet", 1500, 950)]):
             ts = start + k * step
             ace[sid].append(ace_log_line(ts, sid, act, raw, sent, base=500, layer=9 if k > 2 else 0, lay=120 if k > 2 else 0,
                                          folds=sum(1 for p in plan[:k + 1] if p[0] == "fold")))
@@ -1052,6 +1054,102 @@ class MeasuresTest(unittest.TestCase):
         self.assertEqual([hits[i] for i in range(8)], [(s // 2) / (s + 60) for s in sent])
         self.assertEqual(sorted(x[1] for x in r["facts"] if x[3] == "cache_breaks" and x[4] and x[0] == r["dims"]["family"][0]["key"]),
                          [3, 7])
+
+    def test_the_cache_writes_beside_the_acts_are_ratios_of_sums_at_cell_row_and_total(self):
+        from breadcrumbs import metrics, usage
+        keys = ",".join(usage.AFTER_KEYS)
+        top = self.v.measures(m=keys)
+        row = {r["sid"]: r["key"] for r in top["dims"]["family"]}
+        cols = {}
+        for x in top["facts"]:
+            if x[8] == "main":
+                cols.setdefault((x[0], x[3], x[7]), []).append(x)
+
+        def f(sid, m, model):
+            """The cells of a row (one fact per column): (own, incl) folded over its columns, a ratio as its parts."""
+            own = incl = None
+            for x in cols.get((row[sid], m, model), ()):
+                if metrics.get(m)["agg"] == "ratio":
+                    own = x[9] if own is None else own if x[9] is None else [own[0] + x[9][0], own[1] + x[9][1]]
+                    incl = [(incl or [0, 0])[0] + x[10][0], (incl or [0, 0])[1] + x[10][1]]
+                else:
+                    own = x[4] if own is None else own if x[4] is None else own + x[4]
+                    incl = (incl or 0) + x[5]
+            return own, incl
+
+        # the cell: 'today' alone, one hour column. Sonnet: pass x3, fold, keep; Opus: keep x2, fold (build_fixture). The
+        # request after a fold writes 40 and is a cache break; the others write nothing.
+        today = [x for x in top["facts"] if x[0] == row["today"] and x[4] is not None and x[3] == "cw_per_fold"]
+        self.assertEqual(sorted((x[7], x[9], x[4]) for x in today), [(OPUS, [40, 1], 40), (SONNET, [40, 1], 40)])
+        self.assertEqual(len({x[1] for x in today}), 1, "one column")
+        self.assertEqual(today[0][6][:3], ["usage", "today", 1], "the cell of the request after the fold")
+        self.assertEqual([f("today", "acts_" + a, SONNET)[0] for a in ("pass", "fold", "keep")], [3, 1, 1])
+        self.assertEqual((f("today", "cw_after_fold", SONNET)[0], f("today", "breaks_after_fold", SONNET)[0]), (40, 1))
+        self.assertEqual(f("today", "break_rate_pass", SONNET)[0], [0, 3])
+        self.assertEqual(f("today", "break_rate_fold", OPUS)[0], [1, 1])
+        self.assertEqual(f("today", "cw_per_keep", OPUS)[0], [0, 2])
+        self.assertEqual(f("today", "fold_cw_share", SONNET)[0], [40, 40])
+        # the row: 'today' and what it includes (its continuation, Opus: pass x3, fold, keep, ratchet; helpers: no write)
+        self.assertEqual(f("today", "cw_per_fold", OPUS)[1], [40 + 40, 2])
+        self.assertEqual(f("today", "cw_per_pass", OPUS)[1], [0, 3])
+        self.assertEqual(f("today", "break_rate_keep", OPUS)[1], [0, 3])
+        self.assertEqual(f("today", "fold_cw_share", OPUS)[1], [80, 80])
+        self.assertEqual(f("today", "break_rate_ratchet", OPUS), (None, [0, 1]), "only its continuation has a ratchet")
+        self.assertEqual(f("today-cont", "cw_per_ratchet", OPUS)[0], [0, 1])
+        # the grand total (one for each column): the parts of every row, summed, then divided
+        tot = {}
+        for t in top["totals"]:
+            if t[4] == "main" and metrics.get(t[0])["agg"] == "ratio":
+                self.assertEqual(t[2], metrics.value("ratio", t[5]))
+                have = tot.get((t[0], t[3]), [0, 0])
+                tot[(t[0], t[3])] = [have[0] + t[5][0], have[1] + t[5][1]]
+        self.assertEqual([tot[("cw_per_fold", m)] for m in (SONNET, OPUS)], [[40, 1], [80, 2]])
+        self.assertEqual(tot[("break_rate_fold", OPUS)], [2, 2])
+        self.assertEqual(tot[("break_rate_keep", OPUS)], [0, 3])
+        self.assertEqual(tot[("fold_cw_share", SONNET)], [40, 40])
+        self.assertEqual(tot[("cw_per_ratchet", OPUS)], [0, 1])
+        self.assertNotIn(("cw_per_ratchet", SONNET), tot, "no ratchet of Sonnet: no number")
+        # every ratio, in every cell, row and total: its parts are the sums of its sum metrics there (u_cw: all main writes)
+        nums = self.v.measures(m=keys + ",u_cw")
+        part = {(x[0], x[1], x[3], x[7], x[8]): (x[4], x[5]) for x in nums["facts"]}
+        tsum = {(t[0], t[1], t[3], t[4]): t[2] for t in nums["totals"]}
+        ratios = [m for m in usage.AFTER if m["agg"] == "ratio"]
+        self.assertEqual(len(ratios), 9)
+        seen = set()
+        for x in nums["facts"]:
+            m = metrics.get(x[3])
+            if m["agg"] != "ratio":
+                continue
+            seen.add(x[3])
+            (num, (den,)), at = m["of"], (x[0], x[1])
+            den = "u_cw" if den == "cw" else den
+            for j, parts in ((0, x[9]), (1, x[10])):
+                want = [part.get(at + (num, x[7], x[8]), (None, None))[j], part.get(at + (den, x[7], x[8]), (None, None))[j]]
+                self.assertEqual(parts, None if want[1] in (None, 0) else [want[0] or 0, want[1]], (x[3], j))
+                self.assertEqual(x[4 + j], None if parts is None else parts[0] / parts[1])
+        for t in nums["totals"]:
+            m = metrics.get(t[0])
+            if m["agg"] == "ratio":
+                (num, (den,)) = m["of"]
+                den = "u_cw" if den == "cw" else den
+                self.assertEqual(t[5], [tsum.get((num, t[1], t[3], t[4]), 0), tsum[(den, t[1], t[3], t[4])]], t[0])
+        self.assertEqual(seen, {m["key"] for m in ratios})
+        # fold_cw_share is a share of the main writes: never more than 1, in any cell, row or total
+        shares = [v for x in nums["facts"] if x[3] == "fold_cw_share" for v in (x[4], x[5]) if v is not None]
+        shares += [t[2] for t in nums["totals"] if t[0] == "fold_cw_share" and t[2] is not None]
+        self.assertTrue(shares)
+        self.assertLessEqual(max(shares), 1.0)
+        # on the request axis the numbers sit on the request after the act
+        r = self.v.measures(unit="request", sid="today", m=keys)
+        own = {(x[1], x[3]): x[4] for x in r["facts"] if x[0] == r["dims"]["family"][0]["key"] and x[4] is not None}
+        self.assertEqual(sorted(c for c, m in own if m == "acts_fold"), [3, 7])
+        self.assertEqual(sorted(c for c, m in own if m == "acts_pass"), [0, 1, 2])
+        self.assertEqual((own[(3, "cw_after_fold")], own[(7, "break_rate_fold")], own[(4, "cw_per_keep")]), (40, 1, 0))
+        # no harness gives the join: no cell
+        saved = ports.get("ace_join")
+        self.addCleanup(ports.give, "ace_join", saved)
+        ports.give("ace_join", None)
+        self.assertEqual(self.v.measures(m=keys)["facts"], [])
 
     def test_the_request_axis_pairs_an_ace_line_with_the_usage_line_that_follows_it(self):
         ace = [{"ts": 10, "n": "a1"}, {"ts": 20, "n": "a2"}, {"ts": 40, "n": "a3"}]
