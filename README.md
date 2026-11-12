@@ -354,8 +354,8 @@ engineering parameters. They may change during the hackathon.
 <summary><b>Knobs and dials</b></summary>
 
 Every knob is one row below. `python -m breadcrumbs --home <HERMES_HOME>/breadcrumbs dials [--model NAME]`
-shows each dial with its value and where the value came from (the default, `config.json`, a model entry or the
-environment), names a value that is not valid, and names a key that is no dial (a typing mistake). A dial is set in
+shows each dial with its value and where the value came from (the default, `config.json`, a model entry, a built-in
+model entry or the environment), names a value that is not valid, and names a key that is no dial (a typing mistake). A dial is set in
 `$HERMES_HOME/breadcrumbs/config.json`. Each profile has its own file, so profiles differ in one gateway.
 `"models"` maps a glob of the model name to dials: no one set is best for each model, because a model
 at maximum reasoning writes more thinking, and the thinking that goes back with each message counts in each
@@ -368,20 +368,23 @@ because it replaces no code of Hermes; the file keeps them, and `dials` names th
 ```
 
 **The size of the context.** ACE keeps a chat near `ace_tokens`. A model that reads a lot of data needs more room,
-and nothing stops it but Hermes's own threshold: when an interval of reading passes the target, the target grows by
+and nothing stops it but Hermes's own threshold and `ace_ceiling`: when an interval of reading passes the target, the target grows by
 `ace_ratchet`, so the data stays in one place (fewer folds, fewer layers). When the tools work without growing the
 context (a write, or `ace_diverse` different tools in an interval), each interval takes the fold share, 10% at
 `ace_fold_to` 0.9, off the room above `ace_tokens`, until the target is back at the band. A fold then cuts 10% off
 the target, as always. Before the taper, one chat went from 200k to 609,725 and was not folded for 450,000 tokens.
+`ace_ceiling` holds a chat under a price step: Claude Haiku 5.5 costs 5 times as much per token when a prompt holds
+more than 100,000 tokens (cache reads and writes count), so its built-in entry keeps each request at 95,000 or less.
 
 | Dial | Default | Range | Env var | What it does |
 |---|---|---|---|---|
 | `ace_tokens` | 200,000 | 1 or more | `BREADCRUMBS_ACE_TOKENS` | The normal size in tokens at which ACE folds a chat. Reading may grow the target above it; work tapers it back to it. |
 | `ace_fold_to` | 0.9 | 0.1 to 1 |  | A fold leaves the request at this share of the target: 0.9 cuts 10%, 20k at a target of 200k. The same 10% tapers a raised target back to ace_tokens, one step in each interval of work. |
 | `ace_fold_cap` | 1.35 | 0.1 to 2 |  | A fold aims at most at this share of the target, by the estimate (the estimate reads high). |
-| `ace_ratchet` | 1.45 | 1 to 4 |  | A fold interval in which the tools only read raises the target by this factor, so that a model that reads a lot of data keeps it in one place (fewer folds, fewer layers). There is no ceiling but Hermes's threshold. 1.0: never. |
+| `ace_ratchet` | 1.45 | 1 to 4 |  | A fold interval in which the tools only read raises the target by this factor, so that a model that reads a lot of data keeps it in one place (fewer folds, fewer layers). There is no ceiling but Hermes's threshold and ace_ceiling. 1.0: never. |
+| `ace_ceiling` | 0 | 0 or more |  | The most tokens that ACE lets a request reach: the target, the raised target and the room of lockup stay at or under it. For a model whose price per token steps up with the size of the prompt: Claude Haiku 5.5 costs 5 times as much over 100,000 prompt tokens, so its built-in entry is 95,000. 0: no ceiling. |
 | `ace_lockup` | false | true or false |  | Two gears. Lockup (research and reasoning): from the first request the target is ace_room, and nothing folds below it. Thinking and calls that only read keep the lockup; the crumb tools never count as work. Low gear (work): the first call that writes shifts down. Each user turn of work takes ace_downshift of the room above ace_tokens, and a user turn with no work puts the chat in lockup again. Off: the target is ace_tokens, and ace_ratchet raises it. |
-| `ace_room` | 0 | 0 or more |  | The research room in lockup, in tokens: the size that a chat may reach before its first gentle fold, which leaves ace_fold_to of it. A grant, not a cap: it is cut to Hermes's threshold, and a room under ace_tokens is ace_tokens. 0: Hermes's threshold. Needs ace_lockup. |
+| `ace_room` | 0 | 0 or more |  | The research room in lockup, in tokens: the size that a chat may reach before its first gentle fold, which leaves ace_fold_to of it. A grant, not a cap: it is cut to Hermes's threshold and to ace_ceiling, and a room under ace_tokens is ace_tokens. 0: Hermes's threshold. Needs ace_lockup. |
 | `ace_downshift` | 0 | 0 to 1 |  | The share of the room above ace_tokens that each user turn of work takes off in low gear (with no ace_lockup: each interval of work). 0: 1 minus ace_fold_to, 10% at the default, as before. |
 | `ace_turn_fold` | false | true or false |  | In low gear the first request of each user turn folds again when the chat has a layer, so the layer follows the task. The layer then holds inside the turn, and the prompt cache holds. Needs ace_lockup. |
 | `ace_persist` | 0 | 0 or more |  | The words of the tool calls in the kept turns count as focus words at half weight in the layer, and an old crumb whose rare words come back in later groups of turns gets its weight times 1 plus this number for each of those groups (at most 4). 0: off. |
@@ -529,7 +532,7 @@ danger. breadcrumbs gives each danger a guard and a signal.
 | A small model writes summaries. | A summary can be wrong. | A `sum` crumb keeps the model's SHA-256 and the exact prompt. Its sources stay exact. | `sum` crumbs |
 | The hive searches other hosts. | Text from another host comes into the context. | Each part must pass its CRC32C check. A late peer passes. The id names the peer. | receipts with `id@peer/store` |
 | One memory per profile | Two codebases in one chat dilute the context and mix their recall. | A red offer at the 3rd call. `/island PATH` gives the codebase its own profile. | `islands.json` |
-| ACE raises its target when the tool calls only read. | A larger target costs more tokens in each request. | Only a fold interval with no work raises the target (by 1.45), up to Hermes's threshold. An interval with work folds as before. | `act=ratchet` in `ace.log` |
+| ACE raises its target when the tool calls only read. | A larger target costs more tokens in each request. | Only a fold interval with no work raises the target (by 1.45), up to Hermes's threshold or `ace_ceiling`. An interval with work folds as before. | `act=ratchet` in `ace.log` |
 
 Each signal is a file (`ace.log`, `islands.json`) or a crumb (`rcpt`, `sum`) that you can read.
 `/island` is a command of breadcrumbs.
