@@ -16,6 +16,8 @@ import unittest
 import urllib.error
 import urllib.request
 
+from breadcrumbs import ports
+
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
 from breadcrumbs_spacegraph import view
@@ -411,6 +413,8 @@ SECRET = "SECRET-TEXT-X"  # planted in every text column of the fixture state.db
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SONNET, OPUS, HAIKU = "claude-sonnet-5-5", "claude-opus-5", "claude-haiku-5"
 REPO_A, REPO_B = "/Users/demo/code/home-notes", "/Users/demo/code/bike-fix"  # made-up codebases
+FIELD_MEASURE = {f: m for m, f in view.USAGE_FIELD.items()}  # a field of a usage line -> the measure that sums it
+FAKE_RATES = {SONNET: (3, 0.3, 3.75), OPUS: (15, 1.5, 18.75)}  # made-up rates (USD per 1M: input, cache read, cache write); none for HAIKU
 
 
 def stamp(ts):
@@ -577,9 +581,12 @@ class MeasuresTest(unittest.TestCase):
         cls.home = cls.tmp.name
         cls.fx = build_fixture(cls.home)
         cls.root = cls.fx["root"]
+        cls.price = ports.get("price")  # a fake price port: the numbers of the tests never depend on Hermes's table
+        ports.give("price", lambda model, provider: FAKE_RATES.get(model))
 
     @classmethod
     def tearDownClass(cls):
+        ports.give("price", cls.price)
         cls.tmp.cleanup()
 
     def setUp(self):
@@ -611,11 +618,23 @@ class MeasuresTest(unittest.TestCase):
         for kw in self.UNITS:
             top, rows, facts = self.load(**kw)
             by = {(f[0], f[1], f[3], f[7], f[8]): (f[4], f[5]) for f in facts}
+            parts = {(f[0], f[1], f[3], f[7], f[8]): (f[9], f[10]) for f in facts if len(f) > 9}  # a ratio: its parts
             members = {}
             for r in rows.values():
                 if r["parent"]:
                     members.setdefault(r["parent"], []).append(r["key"])
             for (row, ctx, m, model, task), (own, incl) in by.items():
+                if view.MEASURE[m]["agg"] == "ratio":  # its parts are the sums of its fields (checked above as sums), divided
+                    p_own, p_incl = parts[(row, ctx, m, model, task)]
+                    num, dens = view.MEASURE[m]["of"]
+                    for got, at in ((p_own, 0), (p_incl, 1)):
+                        sums = [by.get((row, ctx, FIELD_MEASURE[f], model, task), (None, None))[at] for f in [num] + dens]
+                        want = None if all(x is None for x in sums) else [sums[0] or 0, sum(x or 0 for x in sums[1:])]
+                        self.assertEqual(got, want, (kw, row, ctx, m, at))
+                        self.assertEqual((own, incl)[at], got[0] / got[1] if got and got[1] else None, (kw, row, ctx, m, at))
+                    self.assertIsNotNone(incl, "a ratio with no number has no fact")
+                    checked[m] = checked.get(m, 0) + 1
+                    continue
                 kids = [by.get((k, ctx, m, model, task), (None, 0))[1] for k in members.get(row, ())]
                 want = max([own or 0] + kids) if view.MEASURE[m]["agg"] == "max" else (own or 0) + sum(kids)
                 self.assertAlmostEqual(incl, want, places=6, msg=(kw, row, ctx, m))
@@ -627,16 +646,27 @@ class MeasuresTest(unittest.TestCase):
             top, rows, facts = self.load(**kw)
             cells, roots = {}, {}
             for f in facts:
-                key = (f[3], f[1], f[7], f[8])
+                key, agg = (f[3], f[1], f[7], f[8]), view.MEASURE[f[3]]["agg"]
+                if agg == "ratio":
+                    continue  # a ratio: its parts are checked against the totals of its fields, below
                 if f[4] is not None:
-                    cells[key] = max(cells.get(key, 0), f[4]) if view.MEASURE[f[3]]["agg"] == "max" else cells.get(key, 0) + f[4]
+                    cells[key] = max(cells.get(key, 0), f[4]) if agg == "max" else cells.get(key, 0) + f[4]
                 if rows[f[0]]["parent"] is None:
-                    roots[key] = max(roots.get(key, 0), f[5]) if view.MEASURE[f[3]]["agg"] == "max" else roots.get(key, 0) + f[5]
-            totals = {(m, c, model, task): v for m, c, v, model, task in top["totals"]}
-            self.assertEqual(set(totals), set(cells), kw)
-            for key, v in totals.items():
-                self.assertAlmostEqual(v, cells[key], places=6, msg=(kw, key))  # the sum of all self numbers
-                self.assertAlmostEqual(v, roots[key], places=6, msg=(kw, key))  # the incl of the roots
+                    roots[key] = max(roots.get(key, 0), f[5]) if agg == "max" else roots.get(key, 0) + f[5]
+            totals = {(t[0], t[1], t[3], t[4]): t for t in top["totals"]}
+            ratios = {key for key in totals if view.MEASURE[key[0]]["agg"] == "ratio"}
+            self.assertEqual(set(totals) - ratios, set(cells), kw)
+            self.assertEqual(ratios, {(f[3], f[1], f[7], f[8]) for f in facts if f[3] in view.MEASURE
+                                      and view.MEASURE[f[3]]["agg"] == "ratio" and f[4] is not None}, kw)
+            for key, t in totals.items():
+                if key in ratios:  # the parts of a ratio's total are the totals of its fields; its number is their share
+                    num, dens = view.MEASURE[key[0]]["of"]
+                    sums = [totals.get((FIELD_MEASURE[f],) + key[1:], [0, 0, 0])[2] for f in [num] + dens]
+                    self.assertEqual(t[5], [sums[0], sum(sums[1:])], (kw, key))
+                    self.assertAlmostEqual(t[2], t[5][0] / t[5][1], places=9, msg=(kw, key))
+                    continue
+                self.assertAlmostEqual(t[2], cells[key], places=6, msg=(kw, key))  # the sum of all self numbers
+                self.assertAlmostEqual(t[2], roots[key], places=6, msg=(kw, key))  # the incl of the roots
 
     def test_the_planted_text_is_in_no_output(self):
         outs = []
@@ -980,6 +1010,48 @@ class MeasuresTest(unittest.TestCase):
         # the two counts of a request are in one column (ACE's estimate, the provider's count)
         got = {(x[1], x[3]): x[4] for x in r["facts"] if x[0] == r["dims"]["family"][0]["key"]}
         self.assertEqual([got[(i, "u_prompt")] - got[(i, "ace_sent")] for i in range(8)], [60] * 8)
+
+    def test_a_usage_line_of_another_harness_is_read_with_the_lines_of_hermes(self):
+        from breadcrumbs import usage
+        with tempfile.TemporaryDirectory() as root:
+            usage.append(root, [usage.record("codex", "s-x", "s-x:9", 1794000000, "gpt-demo", "openai", 10, 80, 5, 3, 1)])
+            r, = view.usage_requests(root)
+            self.assertEqual((r["sess"], r["req"], r["model"], r["prov"], r["in"], r["cr"], r["cw"], r["prompt"], r["task"]),
+                             ("s-x", "s-x:9", "gpt-demo", "openai", 10, 80, 5, 95, "main"))
+
+    def test_the_cache_metrics_are_ratios_of_the_sums_of_the_usage_lines(self):
+        top = self.v.measures(m="cache_hit,cache_write_share,cache_reuse,cache_breaks,break_tokens,cache_saved_usd")
+        row = next(r for r in top["dims"]["family"] if r["sid"] == "today")["key"]
+        own = {(x[3], x[7], x[8]): x for x in top["facts"] if x[0] == row and x[4] is not None}
+        cr, prompt = [200, 350, 495, 350, 400], [460, 760, 1050, 760, 860]  # the Sonnet requests of 'today' (build_fixture)
+        hit = own[("cache_hit", SONNET, "main")]
+        self.assertEqual(hit[9], [sum(cr), sum(prompt)], "a ratio carries its parts")
+        self.assertEqual(hit[4], sum(cr) / sum(prompt), "the share of the sums, not a mean of shares")
+        self.assertEqual(own[("cache_write_share", SONNET, "main")][4], 40 / sum(prompt))
+        self.assertEqual(own[("cache_reuse", SONNET, "main")][4], sum(cr) / 40)
+        self.assertEqual(own[("cache_reuse", OPUS, "main")][4], (475 + 505 + 440) / 40)
+        self.assertEqual(own[("cache_hit", HAIKU, "compression")][4], 0)
+        self.assertNotIn(("cache_reuse", HAIKU, "compression"), own, "no write: a denominator of 0 gives no cell")
+        self.assertEqual([own[("cache_breaks", m, "main")][4] for m in (SONNET, OPUS)], [1, 1], "the two folds wrote again")
+        self.assertEqual([own[("break_tokens", m, "main")][4] for m in (SONNET, OPUS)], [40, 40])
+        self.assertAlmostEqual(own[("cache_saved_usd", SONNET, "main")][4], (sum(cr) * (3 - 0.3) - 40 * (3.75 - 3)) / 1e6, places=9)
+        self.assertNotIn(("cache_saved_usd", HAIKU, "compression"), own, "the fake price port has no rates for it")
+        self.assertEqual(own[("cache_hit", SONNET, "main")][6][:3], ["usage", "today", 5])
+        # the grand total of a ratio: the parts of every usage line of its model and task, summed, then divided
+        lines = view.usage_requests(self.root)
+        for model, task in ((SONNET, "main"), (OPUS, "main")):
+            parts = [t[5] for t in top["totals"] if t[0] == "cache_hit" and t[3] == model and t[4] == task]
+            want = [sum(r["cr"] for r in lines if r["model"] == model and r["task"] == task),
+                    sum(r["prompt"] for r in lines if r["model"] == model and r["task"] == task)]
+            self.assertEqual([sum(p[0] for p in parts), sum(p[1] for p in parts)], want, model)
+        self.assertTrue(all(t[2] is not None for t in top["totals"]))
+        # on the request axis a request is a cell of its own
+        r = self.v.measures(unit="request", sid="today", m="cache_hit,cache_breaks")
+        hits = {x[1]: x[4] for x in r["facts"] if x[3] == "cache_hit" and x[0] == r["dims"]["family"][0]["key"]}
+        sent = [400, 700, 990, 700, 800, 950, 1010, 880]
+        self.assertEqual([hits[i] for i in range(8)], [(s // 2) / (s + 60) for s in sent])
+        self.assertEqual(sorted(x[1] for x in r["facts"] if x[3] == "cache_breaks" and x[4] and x[0] == r["dims"]["family"][0]["key"]),
+                         [3, 7])
 
     def test_the_request_axis_pairs_an_ace_line_with_the_usage_line_that_follows_it(self):
         ace = [{"ts": 10, "n": "a1"}, {"ts": 20, "n": "a2"}, {"ts": 40, "n": "a3"}]

@@ -19,23 +19,24 @@ space. A missing id or name is "-" and a missing number is 0.
 Ids, names and numbers only. The request, the response, the error text and the base_url are never read into a line:
 format_line() takes the named fields and nothing else. BREADCRUMBS_USAGE_LOG=0 writes nothing. The file turns over
 to usage.log.1 at LOG_BYTES, as ace.log does. A hook never raises.
+
+The format of a line is common's (breadcrumbs/usage.py line()): `ingest` of another harness adds the requests of its
+sessions to the usage.log of the store, each line with src=<harness> at its end.
 """
 import logging
-import math
 import os
-import re
 import threading
 import time
 from collections.abc import Mapping
 
+from breadcrumbs import usage
+from breadcrumbs.usage import LOG_NAME, WORD_MAX, count as _count  # noqa: F401  (the format of a line is common's)
+
 LOG_BYTES = 1 << 20              # usage.log turns over to usage.log.1 at this size, as ace.log does
-LOG_NAME = "usage.log"
 OFF = "BREADCRUMBS_USAGE_LOG"    # "0" writes nothing
 HOOKS = ("post_api_request", "post_auxiliary_call")
-WORD_MAX = 256                   # an id or a name is cut here: a line holds ids and numbers, never text
 USAGE_KEYS = ("input_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens", "reasoning_tokens")
 
-_SPACE = re.compile(r"\s+")
 _LOCK = threading.Lock()         # Hermes runs a hook in a worker thread: one append at a time in a process
 
 
@@ -53,35 +54,6 @@ def _stamp():
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def _word(value):
-    """An id or a name as one word: whitespace becomes "_" and a missing value is "-". A structure is never an id."""
-    if value is None or isinstance(value, (Mapping, list, tuple, set, frozenset, bytes, bytearray)):
-        return "-"
-    text = "".join(c if c.isprintable() else "_" for c in _SPACE.sub("_", str(value).strip()))
-    return text[:WORD_MAX] or "-"
-
-
-def _count(value):
-    """A count as a whole number: 0 when it is missing, not a number or below 0."""
-    if value is None or isinstance(value, bool):
-        return 0
-    try:
-        return max(int(value), 0)
-    except (TypeError, ValueError, OverflowError):
-        return 0
-
-
-def _seconds(value):
-    """Seconds with 3 decimals: 0.000 when they are missing, not a number or below 0."""
-    if value is None or isinstance(value, bool):
-        return "0.000"
-    try:
-        x = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return "0.000"
-    return "%.3f" % x if math.isfinite(x) and x > 0 else "0.000"
-
-
 def _field(obj, name):
     if isinstance(obj, Mapping):
         return obj.get(name)
@@ -89,22 +61,18 @@ def _field(obj, name):
 
 
 def format_line(kw, task, failed=False):
-    """The line (no newline) for one call: the named fields of kw and nothing else.
+    """The line (no newline) for one call: the named fields of kw and nothing else, in the format of breadcrumbs/usage.py.
     task is "main" or the aux task. failed: a helper call that raised (fin=error, whatever else kw says)."""
-    usage = kw.get("usage")  # a dict, or None for a call with no usage
-    inp, cr, cw, out, rsn = (_count(_field(usage, k)) for k in USAGE_KEYS)
-    given = _field(usage, "prompt_tokens")
-    prompt = _count(given) if given is not None else inp + cr + cw
-    fields = (
-        ("sess", _word(kw.get("session_id"))), ("turn", _word(kw.get("turn_id"))),
-        ("req", _word(kw.get("api_request_id"))), ("n", _count(kw.get("api_call_count"))),
-        ("task", _word(task)), ("model", _word(kw.get("model"))), ("resp", _word(kw.get("response_model"))),
-        ("prov", _word(kw.get("provider"))), ("in", inp), ("cr", cr), ("cw", cw), ("out", out), ("rsn", rsn),
-        ("prompt", prompt), ("est", _count(kw.get("approx_input_tokens"))), ("msgs", _count(kw.get("message_count"))),
-        ("tools", _count(kw.get("tool_count"))), ("dur", _seconds(kw.get("api_duration"))),
-        ("fin", "error" if failed else _word(kw.get("finish_reason"))),
-    )
-    return _stamp() + " " + " ".join("%s=%s" % f for f in fields)
+    use = kw.get("usage")  # a dict, or None for a call with no usage
+    inp, cr, cw, out, rsn = (_count(_field(use, k)) for k in USAGE_KEYS)
+    given = _field(use, "prompt_tokens")
+    return usage.line({
+        "sess": kw.get("session_id"), "turn": kw.get("turn_id"), "req": kw.get("api_request_id"),
+        "n": kw.get("api_call_count"), "task": task, "model": kw.get("model"), "resp": kw.get("response_model"),
+        "prov": kw.get("provider"), "in": inp, "cr": cr, "cw": cw, "out": out, "rsn": rsn,
+        "prompt": _count(given) if given is not None else inp + cr + cw, "est": kw.get("approx_input_tokens"),
+        "msgs": kw.get("message_count"), "tools": kw.get("tool_count"), "dur": kw.get("api_duration"),
+        "fin": "error" if failed else kw.get("finish_reason")}, _stamp())
 
 
 def _append(path, data):

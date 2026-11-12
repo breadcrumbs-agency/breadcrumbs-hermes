@@ -4,6 +4,7 @@ __init__.py of the plugin folder) imports it too, as `<plugin>.breadcrumbs_herme
 registration happen once, whichever import comes first.
 
     ports      neighbor dial state codebase profile hide blocked  (for the viewers, the hive and the searches)
+               price  (the rates of a model, for the cache metrics: breadcrumbs/usage.py)
     commands   ace dials ingest-hermes sources seats seat no-vis  (island, seats, dials, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`)
@@ -151,6 +152,25 @@ def _hide(home):
 def _blocked(home):
     from . import novis
     return novis.blocked(home)
+
+
+_PRICES = {}  # (model, provider) -> rates or None: one ask of Hermes's table for each, in a process
+
+
+def _price(model, provider):
+    """The price port (breadcrumbs/usage.py): (input, cache read, cache write) in USD per 1M tokens, from Hermes's own table
+    (agent/usage_pricing.py get_pricing_entry), or None: no Hermes on the path, an unknown model, or a missing rate.
+    Imported at the first ask, inside a try: a view without Hermes still opens. No price is copied into this package."""
+    key = (model, provider or None)
+    if key not in _PRICES:
+        try:
+            from agent.usage_pricing import get_pricing_entry
+            e = get_pricing_entry(model, provider=provider or None)
+            rates = (e.input_cost_per_million, e.cache_read_cost_per_million, e.cache_write_cost_per_million) if e else None
+            _PRICES[key] = None if rates is None or None in rates else tuple(float(x) for x in rates)
+        except Exception:  # no Hermes here, or its table failed: no price
+            _PRICES[key] = None
+    return _PRICES[key]
 
 
 def _stored(home, fn):
@@ -350,6 +370,7 @@ if ports.layer("hermes", __file__):
     ports.give("profile", _profile)
     ports.give("hide", _hide)
     ports.give("blocked", _blocked)
+    ports.give("price", _price)
     ports.command("ace", _add_ace, _ace, after="log")
     ports.command("dials", _add_dials, _dials, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
