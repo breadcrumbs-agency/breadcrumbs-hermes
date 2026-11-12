@@ -22,7 +22,7 @@ too (_fold). When the tool calls since the last fold did no work
 fold, up to Hermes's threshold. The log keeps the raised target and the gain for a new object.
 TARGET_TOKENS, FOLD_TO, FOLD_CAP and RATCHET are defaults: each model has its own dials in <root>/config.json
 "models" (dials.py), next to its temperature (Ace._dial). Reading grows the target, with no ceiling but
-Hermes's threshold and the model's ace_ceiling (Claude Haiku 5.5: 95,000 built in, under the 100,000 prompt
+Hermes's threshold and the model's ace_ceiling (Claude Haiku 5.5: 94,000 built in, from the 100,000 prompt
 tokens where its price steps up); work tapers it back to the band by the fold share (_taper).
 
 The layer is a tree: groups of GROUP_TURNS turns, then one crumb per message. Each message is stored

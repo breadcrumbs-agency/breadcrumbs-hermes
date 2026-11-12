@@ -59,7 +59,8 @@ DIALS = (
     Dial("ace_ceiling", 0, "int", 0, None, "ACE (per model)", None,
          "The most tokens that ACE lets a request reach: the target, the raised target and the room of lockup stay "
          "at or under it. For a model whose price per token steps up with the size of the prompt: Claude Haiku "
-         "5.5 costs 5 times as much over 100,000 prompt tokens, so its built-in entry is 95,000. 0: no ceiling."),
+         "5.5 costs 5 times as much over 100,000 prompt tokens, so its built-in entry is 94,000, which keeps the "
+         "bill under the step when the estimate reads 5.9% low. 0: no ceiling."),
     Dial("ace_lockup", False, "bool", None, None, "ACE (per model)", None,
          "Two gears. Lockup (research and reasoning): from the first request the target is ace_room, and nothing "
          "folds below it. Thinking and calls that only read keep the lockup; the crumb tools never count as work. "
@@ -119,11 +120,18 @@ DIALS = (
 )
 BY_KEY = {d.key: d for d in DIALS}
 
+# The prompt size in tokens at which a model's price per token steps up. All input tokens count, cache reads and
+# writes too, as in Hermes's prompt_tokens, which ACE counts by. Claude Haiku 5.5 costs 5 times as much per token
+# over 100,000 (Anthropic's prices of 2026-10-07).
+PRICE_STEPS = {"*haiku-5[.-]5*": 100_000}
+# The most that ACE's estimate of a request read under the model's count (ace.Ace.tokens: 5.9% on a live run, Nov 8
+# 2026). A ceiling of the step times 1 minus this, down to the thousand, keeps the bill under the step.
+UNDER_READ = 0.059
+
 # The model entries that come with breadcrumbs: a glob of the model name -> dials, as in "models" of config.json.
 # They count after the top level of the file and before its "models" entries, so a "models" entry changes them.
-# Claude Haiku 5.5 costs 5 times as much per token when its prompt holds more than 100,000 tokens (cache reads and
-# writes count; Anthropic's prices of 2026-10-07), so ACE keeps each of its requests at 95,000 or less.
-MODELS = {"*haiku-5[.-]5*": {"ace_ceiling": 95_000}}
+# Each price step gives its model a ceiling (Claude Haiku 5.5: 94,000).
+MODELS = {glob: {"ace_ceiling": int(step * (1 - UNDER_READ)) // 1000 * 1000} for glob, step in PRICE_STEPS.items()}
 
 # Keys of config.json that are no single dial: "models" (dials per model), and two structured settings that
 # other modules read.

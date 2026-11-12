@@ -374,7 +374,8 @@ context (a write, or `ace_diverse` different tools in an interval), each interva
 `ace_fold_to` 0.9, off the room above `ace_tokens`, until the target is back at the band. A fold then cuts 10% off
 the target, as always. Before the taper, one chat went from 200k to 609,725 and was not folded for 450,000 tokens.
 `ace_ceiling` holds a chat under a price step: Claude Haiku 5.5 costs 5 times as much per token when a prompt holds
-more than 100,000 tokens (cache reads and writes count), so its built-in entry keeps each request at 95,000 or less.
+more than 100,000 tokens (cache reads and writes count), so its built-in entry keeps each request at 94,000 or less
+by ACE's estimate. The estimate read at most 5.9% under the model's count on a live run, so the bill stays under the step.
 
 | Dial | Default | Range | Env var | What it does |
 |---|---|---|---|---|
@@ -382,7 +383,7 @@ more than 100,000 tokens (cache reads and writes count), so its built-in entry k
 | `ace_fold_to` | 0.9 | 0.1 to 1 |  | A fold leaves the request at this share of the target: 0.9 cuts 10%, 20k at a target of 200k. The same 10% tapers a raised target back to ace_tokens, one step in each interval of work. |
 | `ace_fold_cap` | 1.35 | 0.1 to 2 |  | A fold aims at most at this share of the target, by the estimate (the estimate reads high). |
 | `ace_ratchet` | 1.45 | 1 to 4 |  | A fold interval in which the tools only read raises the target by this factor, so that a model that reads a lot of data keeps it in one place (fewer folds, fewer layers). There is no ceiling but Hermes's threshold and ace_ceiling. 1.0: never. |
-| `ace_ceiling` | 0 | 0 or more |  | The most tokens that ACE lets a request reach: the target, the raised target and the room of lockup stay at or under it. For a model whose price per token steps up with the size of the prompt: Claude Haiku 5.5 costs 5 times as much over 100,000 prompt tokens, so its built-in entry is 95,000. 0: no ceiling. |
+| `ace_ceiling` | 0 | 0 or more |  | The most tokens that ACE lets a request reach: the target, the raised target and the room of lockup stay at or under it. For a model whose price per token steps up with the size of the prompt: Claude Haiku 5.5 costs 5 times as much over 100,000 prompt tokens, so its built-in entry is 94,000, which keeps the bill under the step when the estimate reads 5.9% low. 0: no ceiling. |
 | `ace_lockup` | false | true or false |  | Two gears. Lockup (research and reasoning): from the first request the target is ace_room, and nothing folds below it. Thinking and calls that only read keep the lockup; the crumb tools never count as work. Low gear (work): the first call that writes shifts down. Each user turn of work takes ace_downshift of the room above ace_tokens, and a user turn with no work puts the chat in lockup again. Off: the target is ace_tokens, and ace_ratchet raises it. |
 | `ace_room` | 0 | 0 or more |  | The research room in lockup, in tokens: the size that a chat may reach before its first gentle fold, which leaves ace_fold_to of it. A grant, not a cap: it is cut to Hermes's threshold and to ace_ceiling, and a room under ace_tokens is ace_tokens. 0: Hermes's threshold. Needs ace_lockup. |
 | `ace_downshift` | 0 | 0 to 1 |  | The share of the room above ace_tokens that each user turn of work takes off in low gear (with no ace_lockup: each interval of work). 0: 1 minus ace_fold_to, 10% at the default, as before. |

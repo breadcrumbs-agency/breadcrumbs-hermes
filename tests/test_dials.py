@@ -189,11 +189,11 @@ class DialTest(unittest.TestCase):
 
     def test_a_ceiling_holds_the_target_the_ratchet_and_the_room(self):
         """Claude Haiku 5.5 costs 5 times as much per token over 100,000 prompt tokens: its built-in ceiling keeps
-        the target at 95,000, also when reading raises it and in the room of lockup (Hermes's threshold: 750,000)."""
+        the target at 94,000, also when reading raises it and in the room of lockup (Hermes's threshold: 750,000)."""
         e = self.engine("claude-haiku-5-5")
-        self.assertEqual((e.target_tokens, e.ceiling, e._target()), (100_000, 95_000, 95_000))
+        self.assertEqual((e.target_tokens, e.ceiling, e._target()), (100_000, 94_000, 94_000))
         self.assertFalse(e._raise())
-        self.assertEqual((e._target(), e._ratcheted(), e._room_for()), (95_000, 95_000, 95_000))
+        self.assertEqual((e._target(), e._ratcheted(), e._room_for()), (94_000, 94_000, 94_000))
         other = self.engine("small")  # no ceiling: as before
         self.assertEqual(other.ceiling, 0)
         self.assertTrue(other._raise())
@@ -250,7 +250,9 @@ class RegistryTest(unittest.TestCase):
     def test_the_haiku_5_5_ceiling_is_built_in_and_a_models_entry_changes_it(self):
         for model in ("claude-haiku-5-5", "anthropic/claude-haiku-5.5", "claude-haiku-5-5-20261007"):
             row = next(r for r in dials.resolve({"ace_ceiling": 0}, model, {}) if r.dial.key == "ace_ceiling")
-            self.assertEqual((row.value, row.source), (95_000, 'models["*haiku-5[.-]5*"] (built in)'), model)
+            self.assertEqual((row.value, row.source), (94_000, 'models["*haiku-5[.-]5*"] (built in)'), model)
+        # the bill stays under the price step even when ACE's estimate reads UNDER_READ low
+        self.assertLess(94_000 / (1 - dials.UNDER_READ), dials.PRICE_STEPS["*haiku-5[.-]5*"])
         for model in ("claude-haiku-4-5", "claude-sonnet-5-5", None):
             self.assertEqual(dials.value({}, model, "ace_ceiling", {}), 0, model)
         cfg = {"models": {"*haiku*": {"ace_ceiling": 0}}}
