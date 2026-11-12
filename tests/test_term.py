@@ -1,4 +1,5 @@
 """breadcrumbs/kitty.py (the Kitty graphics protocol escapes that Kitty and Ghostty read) and `term`."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import base64
 import contextlib
 import io

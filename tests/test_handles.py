@@ -5,6 +5,7 @@ exact text of the child by id. The hook transform_tool_result then adds one hand
 the delegate_task call, in the entry of that child, so the model learns the id. With the dial off nothing of this runs.
 
 The fixture state.db is the one of test_family: a parent p1 and its children c1, c2 and c3 (c3 keeps no turn)."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import tempfile

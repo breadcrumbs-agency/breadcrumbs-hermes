@@ -4,6 +4,7 @@ child go from state.db to the child's own store and a CAR file.
 The fixture state.db has one parent (p1), three children of it (c1, c2, c3) and a session that is nobody's child (x1).
 The text is neutral. c3 has one tool row with an empty result, so a store keeps no turn of it. With the dial off (the
 default), the provider opens no database and writes no file."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import hashlib
 import io

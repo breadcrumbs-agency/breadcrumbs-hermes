@@ -136,6 +136,8 @@ OTHER_KEYS = {
     "models": "dials per model: a glob of the model name -> any dial above",
     "hive": "other hosts to search: {\"ms\": 150, \"peers\": {...}} (breadcrumbs/hive.py)",
     "slot": "the name of another memory provider that runs through breadcrumbs (breadcrumbs/slot.py)",
+    "scope": "\"off\": every chat uses the profile's default memory, not the memory of its git repository or folder "
+             "(workdir.py; BREADCRUMBS_SCOPE=off does the same)",
 }
 
 # Environment variables that are no dial: they are read by the process, not by a profile.

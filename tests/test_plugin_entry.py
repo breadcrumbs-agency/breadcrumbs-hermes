@@ -1,4 +1,5 @@
 """The repo is the plugin: the catalog clones it at a pinned commit and Hermes loads the root."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import importlib.util
 import io
 import contextlib
@@ -15,10 +16,9 @@ from breadcrumbs import cli
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The hooks that register() adds, in order: the three of the islands (island.register), then the one of the dial
-# family (hermes.register_handles). plugin.yaml lists the same four in provides_hooks.
-HOOKS = ["on_session_start", "post_tool_call", "transform_llm_output", "post_api_request", "post_auxiliary_call",
-         "transform_tool_result"]
+# The hooks that register() adds, in order: the two of the usage log (usage_log.register), then the one of the dial
+# family (hermes.register_handles). plugin.yaml lists the same three in provides_hooks.
+HOOKS = ["post_api_request", "post_auxiliary_call", "transform_tool_result"]
 
 
 class Ctx:
@@ -136,16 +136,16 @@ class RootPluginTest(unittest.TestCase):
         self.assertEqual(len(ctx.providers), 1)
         self.assertIsNone(ctx.providers[0].handbook)
 
-    def test_the_root_registers_the_island_hooks_where_hermes_has_hooks(self):
+    def test_the_root_registers_the_hooks_where_hermes_has_hooks(self):
         ctx = HookCtx()
         load_root().register(ctx)
         self.assertEqual(ctx.hooks, HOOKS)
 
-    def test_the_root_registers_the_island_slash_command_and_cli_command(self):
+    def test_the_root_registers_the_scope_and_viz_commands_and_no_profile_command(self):
         ctx = CommandCtx()
         load_root().register(ctx)
-        self.assertEqual(ctx.commands, ["island", "viz"])  # /island PATH [NAME]: the handoff, and the checks; /viz: the explorer
-        self.assertEqual(ctx.cli, ["islands"])  # hermes islands island PATH [NAME] | status [--all]
+        self.assertEqual(ctx.commands, ["scope", "viz"])  # /scope: where the chat's memory is; /viz: the explorer
+        self.assertEqual(ctx.cli, [])  # no `hermes islands`: nothing here makes or switches a profile
         self.assertEqual(ctx.hooks, HOOKS)
 
     def test_the_manifest_declares_every_hook_that_the_root_registers(self):
@@ -280,7 +280,7 @@ class InstallShimTest(unittest.TestCase):
         self.assertIn("register_memory_provider", src)  # as for the root, above
         self.assertIn("register_context_engine", src)
 
-    def test_the_shim_registers_the_island_hooks(self):
+    def test_the_shim_registers_the_hooks(self):
         with tempfile.TemporaryDirectory() as home, mock.patch.object(cli, "profile_home", return_value=home):
             self.assertEqual(self.run_cli("install-hermes", "p"), 0)
             path = os.path.join(home, "plugins", "breadcrumbs", "__init__.py")
@@ -292,7 +292,7 @@ class InstallShimTest(unittest.TestCase):
         ns["register"](ctx)
         self.assertEqual(ctx.hooks, HOOKS)
 
-    def test_the_shim_registers_the_island_command(self):
+    def test_the_shim_registers_the_scope_command(self):
         with tempfile.TemporaryDirectory() as home, mock.patch.object(cli, "profile_home", return_value=home):
             self.assertEqual(self.run_cli("install-hermes", "p"), 0)
             path = os.path.join(home, "plugins", "breadcrumbs", "__init__.py")
@@ -302,11 +302,11 @@ class InstallShimTest(unittest.TestCase):
         exec(compile(src, path, "exec"), ns)
         ctx = CommandCtx()
         ns["register"](ctx)
-        self.assertEqual(ctx.commands, ["island", "viz"])
-        self.assertEqual(ctx.cli, ["islands"])
+        self.assertEqual(ctx.commands, ["scope", "viz"])
+        self.assertEqual(ctx.cli, [])
 
     def test_install_hermes_asks_for_no_other_plugin(self):
-        # breadcrumbs alone gives /island, the handoff, the checks and the offer: no second plugin to install.
+        # breadcrumbs alone gives /scope and /viz: no second plugin to install.
         out = io.StringIO()
         with tempfile.TemporaryDirectory() as home, mock.patch.object(cli, "profile_home", return_value=home), \
                 contextlib.redirect_stdout(out):

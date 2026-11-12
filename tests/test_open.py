@@ -3,6 +3,7 @@
 Subprocess and webbrowser are mocked: no window and no browser opens, and no app has to be installed. The token of
 a test home is read from its own view.token at run time; it is never printed.
 """
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import os

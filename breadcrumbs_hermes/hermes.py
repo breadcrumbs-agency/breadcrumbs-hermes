@@ -18,7 +18,7 @@ import sqlite3
 import threading
 import time
 
-from . import dials
+from . import dials, workdir
 from breadcrumbs import finder, handles, ports, tags
 from breadcrumbs.crc32c import BACKEND
 from breadcrumbs.crumbs import Crumb, get_crumb, put_crumb
@@ -27,6 +27,7 @@ from breadcrumbs.horizon import Controller, decay, split
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import leaves, put_rows, put_tree, put_turn
 from breadcrumbs.lines import put_text, split_lines
+from breadcrumbs.reader import Reader
 from .slot import FIELD_PREFIX, Slot, stored_values
 from breadcrumbs.store import Store
 from breadcrumbs.summarize import MAX_INPUT, TRIES, PromptTooLong, closed_spans, default_runner, plan, shrink, store_summary
@@ -63,11 +64,15 @@ TOOLS = [
                                    "level": {"type": "number", "minimum": 0, "maximum": 1}},
                     "required": ["id", "level"]}},
     {"name": "crumb_find",
-     "description": "Search all breadcrumbs (past turns, memory entries) by words. Returns handles, each hit "
-                    "under its session handle; expand one with crumb(id, level).",
+     "description": "Search the breadcrumbs of this chat's scope (its git repository or folder: past turns, memory "
+                    "entries) by words. Returns handles, each hit under its session handle; expand one with "
+                    "crumb(id, level). scope \"up\" also reads the scopes above this one and the default memory; "
+                    "scope \"all\" reads every scope of the profile.",
      "parameters": {"type": "object",
                     "properties": {"q": {"type": "string"},
-                                   "k": {"type": "integer", "minimum": 1, "maximum": 20}},
+                                   "k": {"type": "integer", "minimum": 1, "maximum": 20},
+                                   "scope": {"type": "string", "enum": ["here", "up", "all"],
+                                             "description": "here (default): this scope only"}},
                     "required": ["q"]}},
 ]
 
@@ -110,17 +115,17 @@ def register_handles(ctx):
 def register_plugin(ctx, provider):
     """What both entry points (the repository root and the shim) add to Hermes after the provider: its
     handbook, the middleware of the dials (the options of a model in "models" reach the OpenAI chat-completions
-    wire, dials.py), the islands (the offer when a chat mixes two codebases, /island and its checks), the usage
+    wire, dials.py), /scope and /viz (workdir.py), the usage
     log (one line of numbers for each model request) and the hook of the family. Each entry point registers the
     provider and ACE itself: Hermes finds a user plugin's memory provider and context engine by the texts
     "register_memory_provider" and "register_context_engine" in its __init__.py (plugins/memory and
     plugins/context_engine in Hermes). Each part goes through a public register_* call of the Hermes context;
     nothing here replaces a class or a function of Hermes."""
-    from . import dials, island, usage_log
+    from . import dials, usage_log, workdir
     from .ace import _home
     register_handbook(ctx, provider)
     dials.register(ctx, _home)
-    island.register(ctx)
+    workdir.register(ctx, provider)
     usage_log.register(ctx)
     register_handles(ctx)
 
@@ -250,7 +255,11 @@ class BreadcrumbsProvider(MemoryProvider):
 
     def initialize(self, session_id, **kwargs):
         home = kwargs.get("hermes_home") or os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
-        self.root = os.path.join(str(home), "breadcrumbs")
+        self._home = str(home)
+        self.home_root = os.path.join(self._home, "breadcrumbs")  # the profile's default memory
+        base_cfg = dials.config(self.home_root)
+        self.scope_info = workdir.resolve(self.home_root, kwargs, base_cfg)  # the memory of this chat's folder
+        self.root = self.scope_info["store"]
         self.store = Store(os.path.join(self.root, "store"))
         self.index = Index(os.path.join(self.root, "index.db"))
         self.refs = Refs(os.path.join(self.root, "refs"))
@@ -268,7 +277,7 @@ class BreadcrumbsProvider(MemoryProvider):
             saved = True
         except (OSError, ValueError, KeyError):
             pass
-        cfg = dials.config(self.root)
+        cfg = dict(base_cfg, **dials.config(self.root)) if self.root != self.home_root else base_cfg  # a scope may override
         self._dial(cfg, saved)
         name = self._slot_name(cfg)
         if self.slot is not None and self.slot.name != name:
@@ -355,9 +364,9 @@ class BreadcrumbsProvider(MemoryProvider):
 
     def _hermes_home(self):
         """The profile's home: the one that initialize got, else Hermes's own (profile-scoped), else HERMES_HOME."""
-        root = getattr(self, "root", None)  # set by initialize
-        if root:
-            return os.path.dirname(root)
+        home = getattr(self, "_home", None)  # set by initialize
+        if home:
+            return home
         try:
             from hermes_constants import get_hermes_home
             return str(get_hermes_home())
@@ -396,8 +405,8 @@ class BreadcrumbsProvider(MemoryProvider):
         if self._the_slot() is None:
             return True
         from .ace import wanted
-        root = getattr(self, "root", None)  # set by initialize
-        return wanted(os.path.dirname(root) if root else None)
+        home = getattr(self, "_home", None)  # set by initialize
+        return wanted(home)
 
     def get_tool_schemas(self):
         slot = self._the_slot()
@@ -441,6 +450,14 @@ class BreadcrumbsProvider(MemoryProvider):
                         zoom, r = self.hive.fetch(peer, sname, ref)
                         head = "\u25c7 %s/%s: %d parts, each checked (CRC32C)%s\n" % (
                             peer, sname, len(r["blobs"]), ", %d withheld" % r["withheld"] if r["withheld"] else "")
+                    reader = None
+                    if not where and (getattr(self, "scope_info", None) or {}).get("on"):
+                        try:
+                            self.zoom.size(ref.strip())
+                        except KeyError:  # not in this scope: the same id names the same text in the others
+                            reader, label = self._elsewhere(ref.strip())
+                            if reader is not None:
+                                zoom, where, head = reader.zoom, label, "\u25c7 %s\n" % label
                     text = head + zoom.render(ref, level)
                     cap, room, want = False, self._room(), len(text.encode("utf-8"))
                     if room is not None and len(text.encode("utf-8")) > room:  # the turn is full: a lower level
@@ -452,7 +469,9 @@ class BreadcrumbsProvider(MemoryProvider):
                         text = CUT % ("level %g asked, %.2f shown" % (asked, level), self._turn_budget(), max(0, room)) + text
                         cap = True
                     self._spend(len(text.encode("utf-8")))
-                    if self.writable and where:  # the receipt names the peer; the local index has no row
+                    if reader is not None:
+                        reader.close()
+                    if self.writable and where:  # the receipt names the peer or scope; the local index has no row
                         n = len(text.encode("utf-8"))
                         self._receipt("open", [("%s@%s" % (ref.strip(), where), level, n)], n, cap=cap, want=want, text=text)
                     elif self.writable:  # the model chose to open it: that is a use
@@ -469,6 +488,10 @@ class BreadcrumbsProvider(MemoryProvider):
                     pend = self.hive.send({"op": "find", "q": q, "k": k}) if self.hive else None  # in flight
                     items, room = [], self._room()
                     text, want = self._find(q, k, items=items, room=room)
+                    which = str(args.get("scope") or "here").lower()
+                    if which in ("up", "all"):
+                        more = self._find_scopes(which, q, k, None if room is None else room - len(text.encode("utf-8")))
+                        text, want = text + more, want + len(more.encode("utf-8"))
                     if pend is not None:  # the local search ran while the peers searched
                         from breadcrumbs.hive import render
                         more, hits = render(self.hive.collect(pend), k, self.hive.ms,
@@ -485,6 +508,66 @@ class BreadcrumbsProvider(MemoryProvider):
             return json.dumps({"error": "unknown id: %s" % (e.args[0] if e.args else "")})
         except (ValueError, TypeError) as e:
             return json.dumps({"error": str(e)})
+
+    def _other_stores(self, which):
+        """[(label, folder)] of the stores that scope `which` reads besides this one: "up" the scopes above and the
+        default memory, "all" every scope of the profile."""
+        info = getattr(self, "scope_info", None)
+        if not info or not info.get("on"):
+            return []
+        found = (workdir.stores_above(self.home_root, info) if which == "up"
+                 else workdir.stores_all(self.home_root, info))
+        return [(label, folder) for label, _, folder in found]
+
+    def _find_scopes(self, which, query, k, room):
+        """The hits of crumb_find in the other scopes, one block each under a \u25c7 line with the scope's name. A
+        block that does not fit the room is left out and the note says so."""
+        out, skipped = "", 0
+        for label, folder in self._other_stores(which):
+            try:
+                reader = Reader(folder)
+            except (OSError, ValueError, sqlite3.Error):
+                continue
+            try:
+                lines = finder.hit_lines(reader.store, reader.index, reader.refs, reader.zoom, query, k, self.neighbor)
+            except (KeyError, sqlite3.Error):
+                lines = []
+            finally:
+                reader.close()
+            block = "".join(line for _, _, line in lines)
+            if not block:
+                continue
+            block = "\u25c7 scope %s\n%s" % (label, block)
+            if room is not None and len((out + block).encode("utf-8")) > max(0, room):
+                skipped += 1
+                continue
+            out += block
+        if skipped:
+            out += "\u25c7 %d more scope%s have hits and do not fit this turn: ask again with a narrower q\n" % (
+                skipped, "" if skipped == 1 else "s")
+        return out
+
+    def _elsewhere(self, ref):
+        """(Reader, label) of another scope that holds crumb `ref`, else (None, None). A crumb id is a content hash, so
+        the same id names the same text in every store; an id with an ordinal (a CRC32C collision) is not looked up."""
+        if "." in ref.partition(":")[0]:
+            return None, None
+        seen = set()
+        for which in ("up", "all"):
+            for label, folder in self._other_stores(which):
+                if folder in seen:
+                    continue
+                seen.add(folder)
+                try:
+                    reader = Reader(folder)
+                except (OSError, ValueError, sqlite3.Error):
+                    continue
+                try:
+                    reader.zoom.size(ref)
+                    return reader, "scope " + label
+                except (KeyError, ValueError, sqlite3.Error):
+                    reader.close()
+        return None, None
 
     def find(self, query, k=8, exclude_session=None, items=None, room=None):
         return self._find(query, k, exclude_session, items, room)[0]

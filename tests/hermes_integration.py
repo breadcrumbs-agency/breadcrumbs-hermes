@@ -1,7 +1,7 @@
 """Integration check through Hermes's own MemoryManager (run with the Hermes venv python).
 
   HERMES_PY=<the python of the Hermes venv, e.g. $(dirname $(readlink -f $(which hermes)))/python>
-  $HERMES_PY tests/hermes_integration.py
+  PYTHONPATH=.:../breadcrumbs-common:../breadcrumbs-spacegraph $HERMES_PY tests/hermes_integration.py
 
 It uses a scratch HERMES_HOME. It never touches a real profile.
 """
@@ -280,87 +280,72 @@ def handbook_check():
               "named it, and its bc command showed the session beside the live store")
 
 
-def island_check():
-    """Islands through Hermes's own code. The memory loader runs the plugin's register(); model_tools posts
-    tool calls in two codebases, and turn_finalizer's reply transform adds the red offer once (the counts
-    are in <home>/breadcrumbs/islands.json). Hermes's slash-command table holds /island: `/island status`
-    shows the islands and their checks; with a path it gives the codebase its own profile (a path skips the
-    Yes or No question that a bare /island asks). The handoff
-    runs with a recorded Hermes (FakeHermes of tests/test_island.py), not with Hermes's CLI: this check
-    never runs `hermes profile create` or `hermes config set`, and subprocess.run fails while the handoff
-    runs. The home folder and the Hermes root are temp folders."""
+def scope_check():
+    """Scopes through Hermes's own code. The memory loader runs the plugin's register(); two chats whose cwd (Hermes's
+    TERMINAL_CWD) is in two git repositories get two memories, each answering for its own repository only, and
+    crumb_find scope "all" reads across. Hermes's slash-command table holds /scope and /viz, and no /island. The
+    home folder and the Hermes home are temp folders; no profile is made and no hermes command runs."""
     import subprocess
-    import types
-    from pathlib import Path
     from unittest import mock
-    from agent.turn_finalizer import apply_llm_output_transform
     from hermes_cli.plugins import get_plugin_command_handler
-    from model_tools import _emit_post_tool_call_hook
     from plugins.memory import load_memory_provider
-    from breadcrumbs import cli
-    from breadcrumbs_hermes import island
-    from test_island import FakeHermes  # tests/ is the folder of this script
-    saved = {k: os.environ.get(k) for k in ("HOME", "HERMES_HOME")}
+    from breadcrumbs import cli, scope
+    from breadcrumbs_hermes import workdir
+    saved = {k: os.environ.get(k) for k in ("HOME", "HERMES_HOME", "TERMINAL_CWD", "BREADCRUMBS_SCOPE")}
     with tempfile.TemporaryDirectory() as top:  # top is the home folder here
         top = os.path.realpath(top)
         home, a, b = (os.path.join(top, d) for d in (".hermes", "work/a", "work/b"))
         for d in (home, a + "/.git", b + "/.git"):
             os.makedirs(d)
-        os.environ.update(HOME=top, HERMES_HOME=home)  # the Hermes CLI of the last step runs in this home too
+        os.environ.update(HOME=top, HERMES_HOME=home)
+        os.environ.pop("BREADCRUMBS_SCOPE", None)
         try:
             with open(os.path.join(home, "config.yaml"), "w") as f:
                 f.write("memory:\n  provider: breadcrumbs\n")
-            with mock.patch.object(island, "HOME", top):
+            with mock.patch.object(scope, "HOME", top), \
+                    mock.patch.object(subprocess, "run", side_effect=AssertionError("a command ran")):
                 assert cli.main(["install-hermes", home]) in (0, None)
-                assert load_memory_provider("breadcrumbs") is not None
-                for i, root in enumerate([a] * 3 + [b] * 3):
-                    _emit_post_tool_call_hook(function_name="read_file",
-                                              function_args={"path": "%s/f%d.py" % (root, i)},
-                                              result="{}", session_id="is-1")
-                agent = types.SimpleNamespace(session_id="is-1", model="test-model", platform="cli")
-                out, changed, before = apply_llm_output_transform(agent, "Done.", turn_id="t-1")
-                again = apply_llm_output_transform(
-                    types.SimpleNamespace(**dict(vars(agent), _llm_output_transform=None)), "Next.", turn_id="t-2")
-                print(out)
-                assert changed and before == "Done.", (changed, before)
-                assert out.startswith("Done.\n\n> [!CAUTION]\n> \U0001F534 **breadcrumbs: this chat mixes two"), out
-                assert "`~/work/a` (3 calls) and `~/work/b` (3 calls)" in out and "`/island ~/work/b`" in out, out
-                assert "spacegraph" not in out.lower() and "plugins install" not in out, out
-                assert again == ("Next.", False, None), again  # one offer per new codebase, not one per reply
-                chat = island.load(home)["is-1"]
-                assert chat["roots"] == {a: 3, b: 3} and chat["warned"] == [a, b], chat  # no island: both codebases
-                print("OK: Hermes's tool hook found two codebases in one chat, its reply hook added the red offer "
-                      "once, and islands.json holds the counts")
 
-                handler = get_plugin_command_handler("island")
-                assert handler is not None, "Hermes has no /island"
-                assert (handler.__module__, handler.__name__) == (island.__name__, "island_command"), \
-                    "Hermes's /island is not this plugin's command: %r" % (handler,)
-                text = handler("status")
-                assert "This profile (`default`)" in text and "Checks: every island is sound." in text, text
-                recorded = FakeHermes(Path(home))
-                with mock.patch.object(island, "run_hermes", recorded), \
-                        mock.patch.object(subprocess, "run", side_effect=AssertionError("the handoff ran a command")):
-                    made = handler(b)
-                print(made)
-                assert "`~/work/b` has its own profile now: `b`" in made and "`hermes -p b`" in made, made
-                assert [(c[:6], h) for c, h in recorded.calls] == [
-                    (["profile", "create", "b", "--clone-from", "default", "--no-alias"], home),
-                    (["-p", "b", "config", "set", "terminal.cwd", b], os.path.join(home, "profiles", "b"))], recorded.calls
-                text = handler("status")
-                assert "  ~/work/b -> b" in text and "Checks: every island is sound." in text, text
-                assert "breadcrumbs islands of all profiles" in handler("--all")
-            shell = subprocess.run([sys.executable, "-m", "hermes_cli.main", "islands", "status"], capture_output=True,
-                                   text=True, timeout=300, stdin=subprocess.DEVNULL, cwd=top)
-            print("hermes islands status: exit %d, %s" % (shell.returncode, (shell.stdout + shell.stderr).strip()[-300:]))
+                def chat(repo, session):
+                    os.environ["TERMINAL_CWD"] = repo
+                    mgr = MemoryManager()
+                    mgr.add_provider(load_memory_provider("breadcrumbs"))
+                    mgr.initialize_all(session_id=session, platform="cli", hermes_home=home, agent_context="primary")
+                    return mgr
+
+                def ask(mgr, q, **extra):
+                    T = sorted(t["name"] for t in mgr.get_all_tool_schemas())[0][: -len("crumb")]
+                    return json.loads(mgr.handle_tool_call(T + "crumb_find", dict(q=q, **extra)))["text"]
+
+                ma, mb = chat(a, "sc-a"), chat(b, "sc-b")
+                ma.sync_all("the walrus kettle runs at eighty degrees in repo a", "noted: walrus kettle", session_id="sc-a")
+                mb.sync_all("the flamingo parser reads tokens in repo b", "noted: flamingo parser", session_id="sc-b")
+                assert ma.flush_pending(timeout=10) and mb.flush_pending(timeout=10), "sync did not drain"
+                assert "walrus" in ask(ma, "walrus kettle") and "walrus" not in ask(mb, "walrus kettle")
+                assert "flamingo" in ask(mb, "flamingo parser") and "flamingo" not in ask(ma, "flamingo parser")
+                assert "walrus" in ask(mb, "walrus kettle", scope="all"), "scope all did not read repo a"
+                stores = sorted(s["root"] for s in scope.known(os.path.join(home, "breadcrumbs")))
+                assert stores == sorted([a, b]), stores  # one store for each repository, none for a profile
+                assert not os.path.isdir(os.path.join(home, "profiles")), "a profile was made"
+                print("OK: Hermes's MemoryManager gave two chats in two repositories two memories; crumb_find answers for its own "
+                      "repository, and scope all reads the other")
+
+                handler = get_plugin_command_handler("scope")
+                assert handler is not None, "Hermes has no /scope"
+                assert (handler.__module__, handler.__name__) == (workdir.__name__, "scope_command"), handler
+                os.environ["TERMINAL_CWD"] = a
+                text = handler("")
+                assert "(git repository: " in text and scope.short(a, top) in text and scope.short(b, top) in text, text
+                assert get_plugin_command_handler("island") is None, "Hermes still has /island"
+                assert get_plugin_command_handler("viz") is not None
+                print(text)
         finally:
             for k, v in saved.items():
                 if v is None:
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
-        print("OK: Hermes's /island showed the islands and their checks, and its handoff gave the two Hermes "
-              "commands (profile create, config set) to a recorded Hermes, which gave ~/work/b its own profile")
+        print("OK: Hermes's /scope shows the scope of the chat and the scopes that have a memory; /island is gone")
 
 
 def wire_check():
@@ -418,4 +403,4 @@ if __name__ == "__main__":
     ace_check()
     wire_check()
     handbook_check()
-    island_check()
+    scope_check()

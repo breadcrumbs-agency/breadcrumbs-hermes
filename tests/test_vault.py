@@ -1,4 +1,5 @@
 """vault: an Obsidian vault from a store (export) and crumbs from a vault (import), with exact bytes."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json
