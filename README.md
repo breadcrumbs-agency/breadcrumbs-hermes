@@ -1,4 +1,8 @@
-![breadcrumbs: every memory has an address](doc/img/hero.png)
+> The films, pictures and the site of the hackathon entry are not in this repository (the plugin is 14 files; the
+> media was 73 MB). They stay in [hermes-breadcrumb-plugin](https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin)
+> at the commit that the links below name.
+
+![breadcrumbs: every memory has an address](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/hero.png)
 
 
 Concepts here: [ /hermes-breadcrumb-plugin](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/)
@@ -24,7 +28,7 @@ exact text. A higher level never removes a word.
 
 `[EVENT] crumb_find → crumb("ffbd6e15", 1) → THE ANSWER NAMES ITS SOURCE`
 
-![A Hermes chat: the model calls crumb_find, then crumb, and names its source](docs/media/run-chat.gif)
+![A Hermes chat: the model calls crumb_find, then crumb, and names its source](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-chat.gif)
 
 A real Hermes chat on the demo memory. The model recalls 6 memories, calls `crumb_find`, calls `crumb` at level 1,
 and gives the exact words with their source: crumb `ffbd6e15`. Nobody wrote its words.
@@ -33,7 +37,7 @@ and gives the exact words with their source: crumb `ffbd6e15`. Nobody wrote its 
 
 `[ZOOM] MAP → SESSION → CARD → LEVEL 0.5: EACH WORD THAT STAYS KEEPS ITS PLACE`
 
-![The explorer goes from the map of sessions to one card, and the card changes its level](docs/media/run-explorer.gif)
+![The explorer goes from the map of sessions to one card, and the card changes its level](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-explorer.gif)
 
 The plugin's own page for Hermes Desktop, on the demo store: the map of all sessions, then one session, then one
 card. The card goes from level 1 to level 0.5, and each word that stays keeps its place.
@@ -42,7 +46,7 @@ card. The card goes from level 1 to level 0.5, and each word that stays keeps it
 
 `[ACE] TARGET 80K HELD · THE LAYER DOES NOT CHANGE BETWEEN FOLDS · THE PROMPT CACHE HOLDS`
 
-![The Size panel: the request climbs to its target and folds 18 times](docs/media/run-window.gif)
+![The Size panel: the request climbs to its target and folds 18 times](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-window.gif)
 
 The Size panel of a real chat of 118 requests. The chat holds 270k tokens. The request that goes out is 78k, under
 its target of 80k. Each red dot is a fold, and no model writes a fold. Between folds the layer does not change, so
@@ -52,7 +56,7 @@ the prompt cache holds.
 
 `[HIVE] 16 AT ONE TIME · ABOUT 1,900 REQUESTS · ABOUT 100 FOLDS · 91.5% OF THE INPUT FROM THE CACHE`
 
-![38 Hermes sessions on their real clock, with a dot for each fold](docs/media/run-takedown.gif)
+![38 Hermes sessions on their real clock, with a dot for each fold](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-takedown.gif)
 
 This entry was built this way. Each bar is one Hermes session (Sonnet 5.5) on its real clock, 16 at one time. Each
 dot is a fold of that session's context. In all: about 1,900 model requests, about 100 folds, and 91.5% of the
@@ -62,7 +66,7 @@ input tokens from the cache. The numbers come from the session table and the ACE
 
 `[IPFS] CHILD → CAR → CID → IMPORT · THE SAME ROOT ID IN BOTH STORES · VERIFY: 0 BAD`
 
-![The terminal of the run: each child's session becomes a CAR file with a CID, and the parent imports it](docs/media/run-family.gif)
+![The terminal of the run: each child's session becomes a CAR file with a CID, and the parent imports it](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-family.gif)
 
 A lead agent and five child agents on the demo profile. The session of each child leaves as one CAR file with a
 CID. The parent imports it and holds the same root id, and `verify` finds 0 bad blocks. The lead's answer cites an
@@ -72,7 +76,7 @@ id from each of the five.
 
 `[SYNC] CLAUDE CODE · OPENCODE · HERMES → LINE 12 = 1721f9ac IN EVERY STORE · 0.110 ms OF LOCKS IN ALL`
 
-![Three panes: Claude Code, OpenCode and Hermes hold the same line id](docs/media/run-panes.gif)
+![Three panes: Claude Code, OpenCode and Hermes hold the same line id](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-panes.gif)
 
 Claude Code, OpenCode and Hermes read one file, each with its own tool, each into its own store. Line 12 has the id
 `1721f9ac` in all three stores, and no pane waited for a lock: 0.110 ms in total. The adapters for the two other
@@ -104,7 +108,7 @@ of that memory from the chat. The offer changes nothing by itself.
 Bold is the best of the five systems. The floor is plain SQLite FTS5 with no stemmer: it is faster and smaller,
 and it finds less. The full rows, with the install column, are in "What is measured" below.
 
-[![To Scale: each bar at its true ratio. Click for the full film with sound.](docs/media/to-scale.gif)](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/film/to-scale.mp4)
+[![To Scale: each bar at its true ratio. Click for the full film with sound.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/to-scale.gif)](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/film/to-scale.mp4)
 
 **To Scale** (65 seconds). The picture plays 12 seconds of it: click it for the full film with sound. Each bar is on
 one linear axis with zero at the left, at its true ratio. Benchmark scores are a demonstration. They are
@@ -112,41 +116,41 @@ preliminary, and they vary during the hackathon.
 
 ## MORE FILMS!
 
-<a href="https://www.youtube.com/watch?v=a05N4Ju2-DM"><img src="docs/media/one-tool-two-parts.jpg" width="440" alt="One Tool, Two Parts"></a>
+<a href="https://www.youtube.com/watch?v=a05N4Ju2-DM"><img src="https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/one-tool-two-parts.jpg" width="440" alt="One Tool, Two Parts"></a>
 
 **One Tool, Two Parts**: `crumb_find` and `crumb`, live on a demo memory.
 [The First Explorer](https://www.youtube.com/watch?v=D3Mdd_eLjn8) is the earliest film of the explorer.
 
 ## LOOK CLOSER!
 
-![What the model saw in one session, turn by turn](doc/img/context.png)
+![What the model saw in one session, turn by turn](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/context.png)
 
 1. Each bar is one copy of a crumb in the model's context, from the event that added it to the next compress. Blue is recall, teal is find, amber is open, grey is the session's own turns. A paler bar is a lower level.
 2. The red dashed line is a compress event (event 5, the sixth dot). The context was compacted, so each copy that was open ends there.
 3. The dashed ring is a cut. In turn 4, event 11 (the last dot) wanted 741 B of text. The turn budget (1,124 B) cut it to 243 B.
 4. The Venn shows the context at event 4 (the fifth dot). The area of a set is its bytes: found 1,316 B, recalled 1,046 B, opened 997 B. Found and recalled share 6 crumbs.
 
-![9 sessions on one map. A line joins two that share a cue word.](doc/img/map.png)
+![9 sessions on one map. A line joins two that share a cue word.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/map.png)
 
 1. Each card is one session: its name, its address (a crumb id) and its size in tokens.
 2. A dashed teal line joins two sessions that share a cue word. The word is the label: derailleur, oolong.
 3. The yellow halo marks the session in focus. Here it is today, the one live session; the other eight are past sessions.
 
-![bc d98e0bf6 at level 0, 0.5 and 1. The words that stay do not move.](doc/img/zoom.png)
+![bc d98e0bf6 at level 0, 0.5 and 1. The words that stay do not move.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/zoom.png)
 
 1. Level 0 is a handle: one line with the id, the kind, the first words of the text and its size, 31 tokens.
 2. Level 0.5 shows the most distinct words. Each … is a gap, and each word keeps the place that it has at level 1.
 3. Level 1 is the exact bytes of the text. Each word of level 0.5 is here, in the same place.
 
-![One hard task. 38 agents. 110 minutes.](doc/img/takedown.png)
+![One hard task. 38 agents. 110 minutes.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/takedown.png)
 
 1. Each bar is one Hermes session (Sonnet 5.5) that worked on this entry on the evening of Nov 10 2026, on its real clock.
 2. Each dot is one fold of that session's context by the breadcrumbs context engine. No model call makes a fold.
 3. The numbers come from the session table and the ACE log of the build profile: numbers only, no text of a chat.
 
-![The explorer goes from all sessions to one line](docs/media/loop-dive.gif)
+![The explorer goes from all sessions to one line](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/loop-dive.gif)
 
-![One crumb changes its level](docs/media/loop-zoom.gif)
+![One crumb changes its level](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/loop-zoom.gif)
 
 ## Five facts, and what follows from each
 
@@ -170,7 +174,7 @@ python3 -m breadcrumbs --home /tmp/bc-demo/breadcrumbs verify                   
 python3 -m breadcrumbs --home /tmp/bc-demo/breadcrumbs serve --open             # the explorer, read-only
 ```
 
-[doc/DEMO.md](doc/DEMO.md) tells what the explorer shows. To see your own Hermes sessions, install the plugin
+[doc/DEMO.md](https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin/blob/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/DEMO.md) tells what the explorer shows. To see your own Hermes sessions, install the plugin
 (the next section) and backfill a profile. The backfill reads `state.db` read-only.
 
 ```sh
