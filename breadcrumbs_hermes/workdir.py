@@ -190,7 +190,7 @@ def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> 
     """/viz: the explorer of one store, opened on this machine (viz.run: a cmux split, else the default browser).
     The answer names the place and never the URL: the URL holds the view token. A chat whose profile or session is
     tagged no-vis opens nothing."""
-    from breadcrumbs_spacegraph import viz
+    from breadcrumbs import viz
 
     from . import novis
 

@@ -9,7 +9,8 @@ registration happen once, whichever import comes first.
     commands   ace dials ingest-hermes scopes seats seat no-vis  (scopes, seats, dials, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
-               icon.png: the Hermes Agent app icon, website/static/img/favicon.svg of NousResearch/hermes-agent (MIT), 96 px)
+               icon.png: the breadcrumbs mark (four crumbs that climb, on the brand's gradient tile, from the brand of
+               breadcrumbs-spacegraph view.html), 96 px; ports.image() reads it into the entry as the icon)
 
 Each function imports its module when it is called, not before: a command loads only the modules that it needs, and a
 patched name of a module (a test) is read at the call.

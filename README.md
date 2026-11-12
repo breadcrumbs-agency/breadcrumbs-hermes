@@ -213,8 +213,8 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
 - **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
   hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
 - **`/viz`**: a slash command that opens the explorer of the memory of the chat's scope, with no command line.
-  The Hermes icon sits beside the brand in the bar, in the tab and in the title, so a view says which program it shows (Claude Code
-  draws its own the same way; a harness that gives no icon gets its first letter on a tile). `BREADCRUMBS_HARNESS=<name>` names the
+  Hermes's entry in the harness table carries the breadcrumbs mark as its icon (`icon.png`). The explorer does not draw the icon yet
+  (the brand bar has no harness picture); `BREADCRUMBS_HARNESS=<name>` names the
   program for a view that was not opened by one.
 - **One core for every harness** (`breadcrumbs/core.py`): six read-only verbs (`find`, `open`, `zoom`, `trail`, `stores`, `health`) over all stores at once (`~/.hermes`, each profile, and `--home` as `local`), held open in one process. Three thin servers carry the same table: `python -m breadcrumbs core mcp` (MCP over stdio), `core sock` (a Unix socket, mode 0600; `--tcp PORT` adds loopback TCP that wants `core.token`) and `core a2a` (A2A 0.3 on 127.0.0.1 with a bearer token). A client names itself (MCP `clientInfo`, the A2A `User-Agent` or `X-Harness`, the `harness` field of a socket request); the core tells Hermes, Claude Code, Codex and OpenCode apart, counts their calls in `health`, and `core setup [HARNESS]` prints the command that adds the MCP server to each one.
 - **The explorer.** It opens a session as a document: turn frames, phase bands, tool and file cards. It draws
