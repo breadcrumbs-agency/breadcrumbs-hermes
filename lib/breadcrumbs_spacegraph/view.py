@@ -33,6 +33,8 @@ from breadcrumbs.usage import AFTER, AFTER_KEYS, CACHE, KEYS as CACHE_KEYS, afte
     rates as cache_rates, values as cache_values
 from breadcrumbs.zoom import CUED, GAP, Zoom, parse_ref  # Zoom: tests/test_view.py reads view.Zoom
 
+from .harness import info as harness_info
+
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
 HEAT_HALF = 86400.0  # seconds: the glow of a crumb the model opened halves each day
 ACE_LOG = ("ace.log.1", "ace.log")  # oldest first
@@ -1725,6 +1727,7 @@ EXPLORER_API = {
                                              q.get("lines") == "1", int(q.get("limit", ROWS_MAX)), q.get("names") == "1"),
     "/api/measures/labels": lambda v, q: v.labels([r for r in q.get("refs", "").split("|") if r]),  # {ref: full label}
     "/api/calendar": lambda v, q: v.calendar(int(q.get("limit", CAL_MAX))),  # when each session ran: the calendar layout of the map
+    "/api/harness": lambda v, q: harness_info(q.get("h") or None),  # the program of this view and the icons: the mark beside the brand
 }
 
 

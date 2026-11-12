@@ -183,6 +183,9 @@ def command(base: str, info: dict, raw_args: str = "") -> str:
 
 
 # -- /viz --------------------------------------------------------------------------------------------------------
+HARNESS = "hermes"  # this program in the harness table (adapter.py): the explorer that /viz opens draws its icon beside the brand
+
+
 def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> str:
     """/viz: the explorer of one store, opened on this machine (viz.run: a cmux split, else the default browser).
     The answer names the place and never the URL: the URL holds the view token. A chat whose profile or session is
@@ -196,7 +199,7 @@ def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> 
         return "breadcrumbs: the explorer did not open: %s." % why
     said = io.StringIO()
     try:
-        viz.run(store, err=said, terminal=False)
+        viz.run(store, err=said, terminal=False, harness=HARNESS)
     except Exception as e:  # a chat command answers; it never raises
         return "breadcrumbs: the explorer did not open: %s: %s" % (type(e).__name__, e)
     where = "a cmux split" if "cmux split" in said.getvalue() else "the browser"

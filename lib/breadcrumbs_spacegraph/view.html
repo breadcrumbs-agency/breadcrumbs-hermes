@@ -15,6 +15,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #brand b{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:12px;
   background:linear-gradient(135deg,#5b9cff,#9b8cff)}
 #brand b svg{width:13px;height:13px}  /* the mark: four crumbs that climb */
+#harness{display:inline-flex;align-items:center;gap:7px;height:20px;margin-left:4px;padding-left:12px;border-left:1px solid var(--line2);
+  color:var(--dim);font-weight:500}  /* the program whose memory this is: its icon (api/harness) */
+#harness[hidden]{display:none}
+#harness img{width:20px;height:20px;border-radius:6px;display:block}
 .tool{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;color:var(--dim);
   white-space:nowrap;user-select:none;border:1px solid transparent;cursor:pointer}
 .tool:hover{background:rgba(255,255,255,.05);color:var(--fg)}
@@ -218,7 +222,7 @@ body:has(#mea.on) #side{z-index:6}
 .big{font-size:22px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
 </style></head><body>
 <div id="bar">
-  <div id="brand"><b><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="#0b0b0d"><circle cx="12" cy="44" r="5"/><circle cx="26" cy="34" r="5"/><circle cx="38" cy="22" r="5.5"/><circle cx="48" cy="10" r="6"/></g></svg></b>breadcrumbs</div>
+  <div id="brand"><b><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="#0b0b0d"><circle cx="12" cy="44" r="5"/><circle cx="26" cy="34" r="5"/><circle cx="38" cy="22" r="5.5"/><circle cx="48" cy="10" r="6"/></g></svg></b>breadcrumbs<span id="harness" hidden><img id="hicon" alt="" width="20" height="20"><span id="hname"></span></span></div>
   <button class="tool" id="home" title="All sessions"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Overview</button>
   <label class="tool"><input type="checkbox" id="ctxon"><svg class="i" viewBox="0 0 16 16"><path d="M2 4h7M5 8h9M2 12h5"/></svg>Context</label>
   <label class="tool"><input type="checkbox" id="trkon"><svg class="i" viewBox="0 0 16 16"><path d="M2 13V3M2 13h12M4 10l3-3 2 2 4-5"/></svg>Size</label>
@@ -277,6 +281,23 @@ let BOTTOM = 24, RIGHT = 0;  // the status line and the context box; the side pa
 const OPEN = 170;  // a box this many pixels wide shows its parts
 let W = 1, H = 1, DPR = 1, CW = 7.2;
 const msg = t => { $("msg").textContent = t; };
+
+// -- the harness: the program whose memory this is. Its icon sits beside the brand, in the tab and in the title. The address says
+// which program opened the page (`h`); with none, a server that loaded one harness gives that one (breadcrumbs_spacegraph/harness.py).
+const HARNESS = {key: "", label: "", icon: ""};
+function showHarness(r) {
+  const me = (r.harnesses || []).find(x => x.key === r.here);
+  if (!me) return false;
+  Object.assign(HARNESS, me);
+  $("hicon").src = me.icon; $("hname").textContent = me.label;
+  $("harness").title = me.label + ": the program whose memory this is"; $("harness").hidden = false;
+  document.title = "breadcrumbs \u00b7 " + me.label;
+  let tab = document.querySelector('link[rel="icon"]');
+  if (!tab) { tab = document.createElement("link"); tab.rel = "icon"; document.head.append(tab); }
+  tab.href = me.icon;
+  return true;
+}
+api("harness", {h: HASH.get("h") || ARG.get("h") || ""}).then(showHarness).catch(() => {});  // an older server has no route: the brand stands alone
 
 // -- the graph: a node is a crumb at one place; a part's key is its parent's key + ">" + its slot --
 const nodes = new Map(), roots = [], cueEdges = [];

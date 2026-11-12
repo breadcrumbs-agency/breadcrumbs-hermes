@@ -19,6 +19,7 @@ import webbrowser
 from breadcrumbs import ports
 
 from . import kitty
+from .harness import fragment
 
 PORT = 8765
 
@@ -37,10 +38,12 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def ensure_server(home, port=PORT):
+def ensure_server(home, port=PORT, harness=None):
     """The URL of the explorer of this home. A server that takes this home's token is used again (launch.answers).
     Else a detached `serve` starts: on the port, or on a free port when another program (the server of another
-    home, for example) holds the port. The child gets this process's module path, so it has the same packages."""
+    home, for example) holds the port. The child gets this process's module path, so it has the same packages.
+    harness: the program that opens it (a key of the harness table; else BREADCRUMBS_HARNESS). The address carries it
+    (`&h=`), so that the page draws its icon beside the brand (harness.py)."""
     from .launch import answers
     from .view import token
     if not answers(port, home):
@@ -55,7 +58,7 @@ def ensure_server(home, port=PORT):
             if listening(port):
                 break
             time.sleep(0.1)
-    return "http://127.0.0.1:%d/#k=%s" % (port, token(home))
+    return "http://127.0.0.1:%d/#k=%s%s" % (port, token(home), fragment(harness))
 
 
 def split_kind(env=os.environ):
@@ -74,10 +77,10 @@ def can_launch(env=os.environ, platform=sys.platform):
     return platform in ("darwin", "win32") or bool(env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"))
 
 
-def autostart(home, env=os.environ, err=None):
+def autostart(home, env=os.environ, err=None, harness=None):
     """Hermes starts in a terminal: in cmux or tmux, split a window for the explorer (a cmux browser split, or a
     tmux pane that runs `term`); in a bare console, ask the OS to open it. Returns "cmux", "tmux", "os" or None.
-    BREADCRUMBS_VIZ=0 turns it off."""
+    BREADCRUMBS_VIZ=0 turns it off. harness: the program that starts it (the icon beside the brand)."""
     err = err or sys.stderr
     if env.get("BREADCRUMBS_VIZ", "").lower() in ("0", "off", "no", "false"):
         return None
@@ -85,11 +88,11 @@ def autostart(home, env=os.environ, err=None):
     if kind == "tmux" and shutil.which("tmux"):
         from .launch import term_argv
         argv = ["tmux", "split-window", "-h", "-d"] + (["-t", env["TMUX_PANE"]] if env.get("TMUX_PANE") else [])
-        r = subprocess.run(argv + [shlex.join(term_argv(home))], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        r = subprocess.run(argv + [shlex.join(term_argv(home, harness))], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         if r.returncode == 0:
             return "tmux"
         print("breadcrumbs viz: tmux could not split: %s" % r.stderr.decode("utf-8", "replace").strip(), file=err)
-    url = ensure_server(home)
+    url = ensure_server(home, harness=harness)
     if kind == "cmux" and shutil.which("cmux"):
         r = subprocess.run(["cmux", "browser", "open", url], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         if r.returncode == 0:
@@ -100,10 +103,11 @@ def autostart(home, env=os.environ, err=None):
     return None
 
 
-def run(home, port=PORT, err=None, terminal=True):
-    """terminal=False: the caller is not the user's shell (the /viz command of a chat), so `term` is not a choice."""
+def run(home, port=PORT, err=None, terminal=True, harness=None):
+    """terminal=False: the caller is not the user's shell (the /viz command of a chat), so `term` is not a choice.
+    harness: the program that opens it, for the icon beside the brand (the key of the harness table)."""
     err = err or sys.stderr
-    url = ensure_server(home, port)
+    url = ensure_server(home, port, harness=harness)
     cmux = shutil.which("cmux")
     if cmux:
         r = subprocess.run([cmux, "browser", "open", url], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)

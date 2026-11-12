@@ -138,15 +138,15 @@ class VizCommand(unittest.TestCase):
         from breadcrumbs_hermes import workdir
         seen = {}
 
-        def fake_run(home, port=viz.PORT, err=None, terminal=True):
-            seen.update(home=home, terminal=terminal)
+        def fake_run(home, port=viz.PORT, err=None, terminal=True, harness=None):
+            seen.update(home=home, terminal=terminal, harness=harness)
             print("breadcrumbs viz: opened in the browser: http://127.0.0.1:1/#k=SECRET", file=err)
             return 0
 
         store = os.path.join("/h/profiles/alpha", "breadcrumbs", "scopes", "app-1234abcd")
         with mock.patch.object(viz, "run", fake_run), mock.patch.object(workdir, "current_home", return_value="/h/profiles/alpha"):
             out = workdir.open_viz(store, hermes="/h")
-        self.assertEqual(seen, {"home": store, "terminal": False})  # the store of the chat's scope, not the profile's
+        self.assertEqual(seen, {"home": store, "terminal": False, "harness": "hermes"})  # the store of the chat's scope, not the profile's; and its icon
         self.assertEqual(out, "breadcrumbs: the explorer of %s is open in the browser (read-only, on this machine)." % store)
         self.assertNotIn("SECRET", out)
 
