@@ -180,9 +180,15 @@ python3 -m breadcrumbs --home ~/.hermes/breadcrumbs ingest-hermes default       
 ## Install
 
 ```sh
-hermes plugins install breadcrumbs-agency/hermes-breadcrumb-plugin   # the repository is the plugin
+# the `release` branch is the plugin: this part with breadcrumbs-common and breadcrumbs-spacegraph under lib/
+hermes plugins install breadcrumbs-agency/breadcrumbs-hermes \
+  --ref "$(git ls-remote https://github.com/breadcrumbs-agency/breadcrumbs-hermes refs/heads/release | cut -f1)"
 hermes config set memory.provider breadcrumbs       # undo: hermes memory off
 ```
+
+`master` is the source of this part and does not run alone (it needs its two layers); `release` is built from the
+parts by `breadcrumbs/tools/bundle.py` (`BUNDLE.json` names the commits). Hermes installs one exact commit, so
+`--ref` takes the 40-character commit of `release`.
 
 The plugin declares one dependency, `google-crc32c`, so the install asks one dependency question, and
 Hermes installs the package into its environment. The CRC32C then uses the CPU instruction. In a Python
