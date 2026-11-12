@@ -211,7 +211,15 @@ class RootPluginTest(unittest.TestCase):
         with open(os.path.join(ROOT, "pyproject.toml"), "rb") as f:
             doc = tomllib.load(f)
         project, uv = doc.get("project", {}), doc.get("tool", {}).get("uv", {})
-        self.assertEqual(project.get("dependencies"), ["breadcrumbs-common>=0.4.1,<0.5", "breadcrumbs-spacegraph>=0.4.1,<0.5"])
+        if os.path.exists(os.path.join(ROOT, "BUNDLE.json")):
+            # A bundle (breadcrumbs/tools/bundle.py) carries the two layers under lib/: its one dependency is the CRC32C.
+            self.assertEqual(project.get("dependencies"),
+                             ["google-crc32c>=1.5,<2; platform_python_implementation == 'CPython'"])
+            self.assertTrue(os.path.isdir(os.path.join(ROOT, "lib", "breadcrumbs")))
+            self.assertTrue(os.path.isdir(os.path.join(ROOT, "lib", "breadcrumbs_spacegraph")))
+        else:
+            self.assertEqual(project.get("dependencies"),
+                             ["breadcrumbs-common>=0.4.1,<0.5", "breadcrumbs-spacegraph>=0.4.1,<0.5"])
         self.assertNotIn("build-system", doc)
         self.assertFalse(any(project.get("optional-dependencies", {}).values()))
         self.assertFalse(any(doc.get("dependency-groups", {}).values()))
