@@ -85,10 +85,18 @@ def _excluded(root, exclude):
     return any(root == x or root.startswith(x + os.sep) for x in exclude)
 
 
+def _too_broad(root, home=None):
+    """The home folder and the filesystem root are no project for a repository or a source tree: a stray package.json or
+    a dotfiles repository there must not make every folder below it one project. A `.breadcrumbs` entry there is meant."""
+    real = os.path.realpath(root)
+    return real == os.path.realpath(home or HOME) or real == os.path.dirname(real)
+
+
 def _roots(path, home, exclude):
     """[(kind, root)] for every folder from `path` up that is a project root, the nearest first: explicit markers and
     git repositories. With none, the nearest source tree; with none, the folder itself (kind "dir"). [] when the nearest
-    marker says off, or when the folder is in `exclude`. (`home` is only for callers that pass it; it limits nothing.)"""
+    marker says off, or when the folder is in `exclude`. A repository or source tree rooted at the home folder or at / is
+    ignored (_too_broad; `home` names the home folder, else the user's)."""
     exclude = [os.path.abspath(x) for x in exclude or ()]
     start = p = _start(path)
     if _excluded(start, exclude):
@@ -97,7 +105,7 @@ def _roots(path, home, exclude):
     while True:
         for kind, found in ((EXPLICIT, _explicit), (GIT, _git_root)):
             r = found(p)
-            if r and r not in seen and not _excluded(r, exclude):
+            if r and r not in seen and not _excluded(r, exclude) and (kind == EXPLICIT or not _too_broad(r, home)):
                 if kind == EXPLICIT and _marker_off(r):
                     return out  # nothing nearer than the marker: no project; a nearer repository was found first
                 seen.add(r)
@@ -110,7 +118,7 @@ def _roots(path, home, exclude):
     p = start  # no marker and no repository: the nearest source tree, else the folder itself
     while True:
         r = _source(p)
-        if r and not _excluded(r, exclude):
+        if r and not _excluded(r, exclude) and not _too_broad(r, home):
             return [(SOURCE, r)]
         if p == os.path.dirname(p):
             break
