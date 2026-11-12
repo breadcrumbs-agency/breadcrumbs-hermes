@@ -1,8 +1,8 @@
 """ACE (adaptive context engineering): a Hermes context engine over breadcrumbs.
 
 Hermes sends every request through select_context(). While a request is under the target, ACE leaves it
-alone. When it passes the target (200k tokens by default, or Hermes's own threshold when that is lower),
-ACE folds the older turns into one layer of crumbs and keeps the newest turns exact:
+alone. When it passes the target (200k tokens by default, or Hermes's own threshold or the model's ace_ceiling
+when one is lower), ACE folds the older turns into one layer of crumbs and keeps the newest turns exact:
 
     system prompt | the layer + the first kept user message | the kept turns, byte for byte
 
@@ -22,7 +22,8 @@ too (_fold). When the tool calls since the last fold did no work
 fold, up to Hermes's threshold. The log keeps the raised target and the gain for a new object.
 TARGET_TOKENS, FOLD_TO, FOLD_CAP and RATCHET are defaults: each model has its own dials in <root>/config.json
 "models" (dials.py), next to its temperature (Ace._dial). Reading grows the target, with no ceiling but
-Hermes's threshold; work tapers it back to the band by the fold share (_taper).
+Hermes's threshold and the model's ace_ceiling (Claude Haiku 5.5: 94,000 built in, from the 100,000 prompt
+tokens where its price steps up); work tapers it back to the band by the fold share (_taper).
 
 The layer is a tree: groups of GROUP_TURNS turns, then one crumb per message. Each message is stored
 exactly (put_text: the same bytes give the same id, so a text that comes back is one crumb, marked x2).
@@ -479,7 +480,7 @@ class Ace(ContextEngine):
         self._fold_bytes = 0  # the bytes that the last fold aimed at
         self._landed: tuple[float, float] | None = None  # the count of the last folded request, and those bytes
         self.model, self.fold_to, self.fold_cap, self.step = "", FOLD_TO, FOLD_CAP, RATCHET  # see _dial()
-        self.diverse = 4  # ace_diverse (dials.py)
+        self.diverse, self.ceiling = 4, 0  # ace_diverse and ace_ceiling (dials.py; a ceiling of 0 is none)
         self.lockup, self.room, self.downshift, self.turn_fold, self.persist = False, 0, 0.0, False, 0.0  # see _dial()
         self.gear, self.room_now, self._seen = "-", 0, (0, 0)  # the gear ("-": no gearbox), its room in tokens, _interval()
         self._turn_n, self._resumed, self._room_logged = None, False, 0  # see _shift() and _open()
@@ -534,21 +535,23 @@ class Ace(ContextEngine):
         v = lambda key: dials.value(cfg, self.model, key, {})  # the environment counts in __init__ (BREADCRUMBS_ACE_TOKENS)
         if not self._given:
             self.target_tokens = v("ace_tokens")
-        self.diverse = v("ace_diverse")
+        self.diverse, self.ceiling = v("ace_diverse"), v("ace_ceiling")
         self.fold_to, self.fold_cap, self.step = v("ace_fold_to"), v("ace_fold_cap"), v("ace_ratchet")
         self.lockup, self.room = v("ace_lockup"), v("ace_room")  # the gears (see _shift)
         self.downshift, self.turn_fold, self.persist = v("ace_downshift"), v("ace_turn_fold"), v("ace_persist")
         self.gear = ("lock" if self.gear == "-" else self.gear) if self.lockup else "-"
 
     def _ratcheted(self):
-        """The target that reading has earned: the band times the ratchet."""
-        return int(round(self.target_tokens * self.ratchet))
+        """The target that reading has earned: the band times the ratchet, at most the model's ace_ceiling."""
+        t = int(round(self.target_tokens * self.ratchet))
+        return min(t, self.ceiling) if self.ceiling else t
 
     def _target(self, budget_tokens=0):
         return min(t for t in (self._ratcheted(), self.threshold_tokens, budget_tokens) if t) or TARGET_TOKENS
 
     def _raise(self, budget_tokens=0):
-        """The target grows by the model's ratchet dial (RATCHET), while Hermes's threshold and the budget let it grow.
+        """The target grows by the model's ratchet dial (RATCHET), while Hermes's threshold, the budget and the model's
+        ace_ceiling let it grow.
         In lockup the room is the bound (and the target is already the room), so only a chat with no room known grows."""
         if self.lockup and self.room_now:
             return False
@@ -620,13 +623,13 @@ class Ace(ContextEngine):
     def _room_for(self, budget_tokens=0):
         """The research room in tokens, or 0 when none is known: ace_room, else Hermes's threshold (or the budget when
         the threshold is not known), else the room that this chat's log kept. Never under the band, and never over
-        Hermes's threshold or the budget: the room is a grant, and Hermes's own limits stay."""
+        Hermes's threshold, the budget or the model's ace_ceiling: the room is a grant, and Hermes's own limits stay."""
         ceiling = min((t for t in (self.threshold_tokens, budget_tokens) if t), default=0)
         room = self.room or ceiling or self._room_logged
         if not room:
             return 0
         room = max(room, self.target_tokens)
-        return min(room, ceiling) if ceiling else room
+        return min(t for t in (room, ceiling, self.ceiling) if t)
 
     def _turn(self, turns):
         """True at the first request of a user turn: there are more or fewer turns than at the request before, or this
