@@ -8,7 +8,8 @@ A dial is set in <HERMES_HOME>/breadcrumbs/config.json (each profile has its own
               "*":          {"ace_ratchet": 1.0}}}
 
 A value comes from, in this order (the last one that sets the dial wins): the default, the top level of the
-file, each glob of "models" that matches the model name (in file order), and the environment variable of the
+file, each built-in entry of MODELS that matches the model name, each glob of "models" that matches the model
+name (in file order), and the environment variable of the
 dial. A value that is not valid (a wrong type, or out of its range) gives the default, and an environment
 variable that is not valid is ignored; `python -m breadcrumbs dials` says so, as it does for a key that is no
 dial (a typing mistake). `python -m breadcrumbs dials` shows every
@@ -55,7 +56,12 @@ DIALS = (
     Dial("ace_ratchet", 1.45, "float", 1.0, 4.0, "ACE (per model)", None,
          "A fold interval in which the tools only read raises the target by this factor, so that a model that "
          "reads a lot of data keeps it in one place (fewer folds, fewer layers). There is no ceiling but Hermes's "
-         "threshold. 1.0: never."),
+         "threshold and ace_ceiling. 1.0: never."),
+    Dial("ace_ceiling", 0, "int", 0, None, "ACE (per model)", None,
+         "The most tokens that ACE lets a request reach: the target, the raised target and the room of lockup stay "
+         "at or under it. For a model whose price per token steps up with the size of the prompt: Claude Haiku "
+         "5.5 costs 5 times as much over 100,000 prompt tokens, so its built-in entry is 94,000, which keeps the "
+         "bill under the step when the estimate reads 5.9% low. 0: no ceiling."),
     Dial("ace_lockup", False, "bool", None, None, "ACE (per model)", None,
          "Two gears. Lockup (research and reasoning): from the first request the target is ace_room, and nothing "
          "folds below it. Thinking and calls that only read keep the lockup; the crumb tools never count as work. "
@@ -64,8 +70,8 @@ DIALS = (
          "is ace_tokens, and ace_ratchet raises it."),
     Dial("ace_room", 0, "int", 0, None, "ACE (per model)", None,
          "The research room in lockup, in tokens: the size that a chat may reach before its first gentle fold, "
-         "which leaves ace_fold_to of it. A grant, not a cap: it is cut to Hermes's threshold, and a room under "
-         "ace_tokens is ace_tokens. 0: Hermes's threshold. Needs ace_lockup."),
+         "which leaves ace_fold_to of it. A grant, not a cap: it is cut to Hermes's threshold and to ace_ceiling, "
+         "and a room under ace_tokens is ace_tokens. 0: Hermes's threshold. Needs ace_lockup."),
     Dial("ace_downshift", 0.0, "float", 0.0, 1.0, "ACE (per model)", None,
          "The share of the room above ace_tokens that each user turn of work takes off in low gear (with no "
          "ace_lockup: each interval of work). 0: 1 minus ace_fold_to, 10% at the default, as before."),
@@ -110,6 +116,19 @@ DIALS = (
          "nothing is read, nothing is written and no result changes."),
 )
 BY_KEY = {d.key: d for d in DIALS}
+
+# The prompt size in tokens at which a model's price per token steps up. All input tokens count, cache reads and
+# writes too, as in Hermes's prompt_tokens, which ACE counts by. Claude Haiku 5.5 costs 5 times as much per token
+# over 100,000 (Anthropic's prices of 2026-10-07).
+PRICE_STEPS = {"*haiku-5[.-]5*": 100_000}
+# The most that ACE's estimate of a request read under the model's count (ace.Ace.tokens: 5.9% on a live run, Nov 8
+# 2026). A ceiling of the step times 1 minus this, down to the thousand, keeps the bill under the step.
+UNDER_READ = 0.059
+
+# The model entries that come with breadcrumbs: a glob of the model name -> dials, as in "models" of config.json.
+# They count after the top level of the file and before its "models" entries, so a "models" entry changes them.
+# Each price step gives its model a ceiling (Claude Haiku 5.5: 94,000).
+MODELS = {glob: {"ace_ceiling": int(step * (1 - UNDER_READ)) // 1000 * 1000} for glob, step in PRICE_STEPS.items()}
 
 # Keys of config.json that are no single dial: "models" (dials per model), and two structured settings that
 # other modules read.
@@ -198,12 +217,15 @@ def resolve(cfg, model=None, environ=None):
     environ = os.environ if environ is None else environ
     cfg = cfg if isinstance(cfg, dict) else {}
     models = cfg.get("models")
+    mname = str(model or "").lower()
     rows = []
     for d in DIALS:
         value, source, bad = d.default, "default", []
         layers = [("config", cfg)]
+        layers += [('models["%s"] (built in)' % glob, opts) for glob, opts in MODELS.items()
+                   if fnmatch.fnmatchcase(mname, glob)]
         for glob, opts in (models.items() if isinstance(models, dict) else ()):
-            if isinstance(opts, dict) and fnmatch.fnmatchcase(str(model or "").lower(), str(glob).lower()):
+            if isinstance(opts, dict) and fnmatch.fnmatchcase(mname, str(glob).lower()):
                 layers.append(('models["%s"]' % glob, opts))
         for name, layer in layers:
             if d.key in layer:
