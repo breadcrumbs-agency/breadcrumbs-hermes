@@ -8,7 +8,8 @@ registration happen once, whichever import comes first.
                ace_join  (each ace.log line with the request that it shaped: ace.join)
     commands   ace dials ingest-hermes scopes seats seat no-vis  (scopes, seats, dials, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
-    harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`)
+    harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
+               icon.png: the Hermes Agent app icon, website/static/img/favicon.svg of NousResearch/hermes-agent (MIT), 96 px)
 
 Each function imports its module when it is called, not before: a command loads only the modules that it needs, and a
 patched name of a module (a test) is read at the call.
@@ -404,4 +405,5 @@ if ports.layer("hermes", __file__):
     ports.command("seats", _add_seats, _seats, before="hive")
     ports.command("seat", _add_seat, _seat, before="hive")
     ports.command("no-vis", _add_novis, _novis, after="hive", hidden=True)
-    ports.harness("hermes", "Hermes", ("hermes",), _setup, order=10, source=_source)
+    ports.harness("hermes", "Hermes", ("hermes",), _setup, order=10, source=_source,
+                  icon=ports.image(__file__, "icon.png"))

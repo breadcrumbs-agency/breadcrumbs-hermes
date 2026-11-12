@@ -2072,7 +2072,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sorted(view.API), ["/api/ace", "/api/context", "/api/crumb", "/api/find", "/api/graph",
                                             "/api/path", "/api/session", "/api/trail", "/api/venn"])
         # the explorer's own routes (the Measures panel, the calendar layout): the dashboard table (tests/test_dashboard.py) is not changed by them
-        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/measures", "/api/measures/labels"])
+        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/harness", "/api/measures", "/api/measures/labels"])
 
 if __name__ == "__main__":
     unittest.main()

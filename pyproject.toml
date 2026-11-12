@@ -15,4 +15,4 @@ dependencies = ["breadcrumbs-common>=0.4.1,<0.5", "breadcrumbs-spacegraph>=0.4.1
 packages = ["breadcrumbs_hermes"]
 
 [tool.setuptools.package-data]
-breadcrumbs_hermes = ["skills/*/SKILL.md"]
+breadcrumbs_hermes = ["skills/*/SKILL.md", "icon.png"]
