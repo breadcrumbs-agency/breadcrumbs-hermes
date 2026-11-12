@@ -95,18 +95,6 @@ class Autostart(unittest.TestCase):
         self.assertFalse(viz.can_launch({}, platform="linux"))
         self.assertTrue(viz.can_launch({"DISPLAY": ":0"}, platform="linux"))
 
-    def test_a_terminal_chat_starts_it_once_and_a_desktop_chat_never(self):
-        from breadcrumbs_hermes import island
-        t = island.Tracker()
-        with mock.patch.object(island, "_viz_started", False), \
-                mock.patch.object(island.threading, "Thread") as thread, \
-                mock.patch.object(island, "hermes_root", return_value=os.path.join(os.sep, "no-hermes-root")), \
-                mock.patch.object(island, "launch_root", return_value=None):  # no no-vis tags of this machine
-            t.on_session_start("a", platform="desktop")
-            t.on_session_start("b", platform="cli")
-            t.on_session_start("c", platform="tui")
-        self.assertEqual(thread.call_count, 1)
-
 
 class Server(unittest.TestCase):
     """ensure_server: the port of another home's server is not taken for this home's."""
@@ -144,10 +132,10 @@ class Help(unittest.TestCase):
 
 
 class VizCommand(unittest.TestCase):
-    """/viz: the chat command opens the explorer of the profile's store and never starts the terminal viewer."""
+    """/viz: the chat command opens the explorer of the chat's scope store and never starts the terminal viewer."""
 
     def test_the_answer_names_the_place_and_not_the_url(self):
-        from breadcrumbs_hermes import island
+        from breadcrumbs_hermes import workdir
         seen = {}
 
         def fake_run(home, port=viz.PORT, err=None, terminal=True):
@@ -155,16 +143,18 @@ class VizCommand(unittest.TestCase):
             print("breadcrumbs viz: opened in the browser: http://127.0.0.1:1/#k=SECRET", file=err)
             return 0
 
-        with mock.patch.object(viz, "run", fake_run):
-            out = island.open_viz("/h/profiles/alpha", hermes="/h")
-        self.assertEqual(seen, {"home": os.path.join("/h/profiles/alpha", "breadcrumbs"), "terminal": False})
-        self.assertEqual(out, "breadcrumbs: the explorer of profile `alpha` is open in the browser (read-only, on this machine).")
+        store = os.path.join("/h/profiles/alpha", "breadcrumbs", "scopes", "app-1234abcd")
+        with mock.patch.object(viz, "run", fake_run), mock.patch.object(workdir, "current_home", return_value="/h/profiles/alpha"):
+            out = workdir.open_viz(store, hermes="/h")
+        self.assertEqual(seen, {"home": store, "terminal": False})  # the store of the chat's scope, not the profile's
+        self.assertEqual(out, "breadcrumbs: the explorer of %s is open in the browser (read-only, on this machine)." % store)
         self.assertNotIn("SECRET", out)
 
     def test_a_failure_is_an_answer(self):
-        from breadcrumbs_hermes import island
-        with mock.patch.object(viz, "run", side_effect=OSError("no port")):
-            self.assertIn("did not open: OSError: no port", island.open_viz("/h/profiles/alpha", hermes="/h"))
+        from breadcrumbs_hermes import workdir
+        with mock.patch.object(viz, "run", side_effect=OSError("no port")), \
+                mock.patch.object(workdir, "current_home", return_value="/h/profiles/alpha"):
+            self.assertIn("did not open: OSError: no port", workdir.open_viz("/h/profiles/alpha/breadcrumbs", hermes="/h"))
 
 
 if __name__ == "__main__":

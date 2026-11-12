@@ -1,5 +1,6 @@
 """core: one verb table behind MCP (stdio), a socket (Unix, TCP) and A2A. The transports are thin; the cases below
 check the core once and each transport's framing once."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import shutil

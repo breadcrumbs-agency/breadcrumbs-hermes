@@ -18,7 +18,7 @@ os.environ.setdefault("SPACEGRAPH_NO_WARM", "1")  # loading the router must not 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from breadcrumbs import cli
-from breadcrumbs_hermes import island, novis
+from breadcrumbs_hermes import novis, workdir
 from breadcrumbs_spacegraph import viz  # noqa: E402
 from breadcrumbs_spacegraph.view import View  # noqa: E402
 from test_context import scenario  # noqa: E402
@@ -160,35 +160,25 @@ class Writer(Root):
 
 
 class Chats(Root):
-    """A chat of a tagged profile or session: no explorer at start, no NOTE, and /viz opens nothing."""
+    """A chat of a tagged profile or session: /viz opens nothing."""
 
     def setUp(self):
         super().setUp()
         self.run_("add", "alpha", "s-new")
 
-    def test_no_explorer_and_no_note(self):
-        with mock.patch.object(island, "_viz_started", False), \
-                mock.patch.object(island.threading, "Thread") as thread, \
-                mock.patch.object(island, "launch_root", return_value=None):
-            island.Tracker(hermes=self.root, profile_home=self.alpha).on_session_start("s-free", platform="cli")
-            island.Tracker(hermes=self.root, profile_home=self.root).on_session_start("s-new", platform="cli")
-            self.assertEqual(thread.call_count, 0)
-            island.Tracker(hermes=self.root, profile_home=self.root).on_session_start("s-free", platform="cli")
-            self.assertEqual(thread.call_count, 1)  # an untagged chat of an untagged profile
+    def test_viz_opens_nothing_for_a_tagged_profile_or_chat(self):
         with mock.patch.object(viz, "run") as run:
-            self.assertEqual(island.open_viz(self.alpha, hermes=self.root), "breadcrumbs: the explorer did not open: "
-                             "profile `alpha` opted out of visualization (no-vis).")
-            self.assertIn("this chat opted out", island.open_viz(self.root, hermes=self.root, session_id="s-new"))
+            with mock.patch.object(workdir, "current_home", return_value=self.alpha):
+                self.assertEqual(workdir.open_viz(os.path.join(self.alpha, "breadcrumbs"), hermes=self.root),
+                                 "breadcrumbs: the explorer did not open: profile `alpha` opted out of visualization (no-vis).")
+            with mock.patch.object(workdir, "current_home", return_value=self.root):
+                self.assertIn("this chat opted out", workdir.open_viz(os.path.join(self.root, "breadcrumbs"),
+                                                                      session_id="s-new", hermes=self.root))
         run.assert_not_called()
-        with mock.patch.object(island, "own_root", return_value="/w/a"), \
-                mock.patch.object(island, "launch_root", return_value="/w/a"):  # launched inside the island
-            t = island.Tracker(hermes=self.root, profile_home=self.root)
-            self.assertIsNone(t.transform_llm_output("hi", session_id="s-new"))
-            self.assertIn("[!NOTE]", t.transform_llm_output("hi", session_id="s-free") or "")
 
     def test_the_commands_that_draw_refuse_a_tagged_profile_and_the_private_command_is_not_in_help(self):
         err, out = io.StringIO(), io.StringIO()
-        with mock.patch.object(island, "hermes_root", return_value=self.root), \
+        with mock.patch.object(workdir, "hermes_root", return_value=self.root), \
                 mock.patch("breadcrumbs_spacegraph.view.make_server") as make, contextlib.redirect_stderr(err):
             self.assertEqual(cli.main(["--home", os.path.join(self.alpha, "breadcrumbs"), "serve"]), 1)
         make.assert_not_called()
@@ -197,7 +187,7 @@ class Chats(Root):
             cli.main(["help"])
         self.assertNotIn("no-vis", out.getvalue())
         out = io.StringIO()
-        with mock.patch.object(island, "hermes_root", return_value=self.root), contextlib.redirect_stdout(out):
+        with mock.patch.object(workdir, "hermes_root", return_value=self.root), contextlib.redirect_stdout(out):
             self.assertEqual(cli.main(["no-vis"]), 0)
         self.assertIn("[x] profile  alpha", out.getvalue())
 

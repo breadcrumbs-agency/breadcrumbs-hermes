@@ -16,7 +16,7 @@
   ingest HARNESS [PATH]     read the sessions of a harness program into the store (hermes: its state.db)
   prune-index               drop index rows that older versions made for crumb/crumb_find calls
   install-hermes PROFILE    write the plugin shim into the profile
-  sources PROFILE           the codebases in the profile's tool calls: calls, chats, last use (islands)
+  scopes [PROFILE]          the scopes of the profile (a git repository or a .breadcrumbs folder), each with its own memory
   term [--url URL] [--every S]  the explorer page drawn in Kitty or Ghostty (Kitty graphics protocol)
   core mcp|sock|a2a|setup [HARNESS]  the one read-only core of every harness (find, open, zoom, trail, stores, health):
                             mcp: MCP over stdio; sock: Unix socket (--tcp PORT adds loopback TCP); a2a: A2A on 127.0.0.1;

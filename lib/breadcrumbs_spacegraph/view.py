@@ -667,14 +667,14 @@ class _Measures:
         return c.meta.get("ts") if c is not None else None
 
     def scope_of(self, rec):
-        """(codebase, branch) of a session: git_repo_root, else the codebase that holds its cwd (island.root_of), else none."""
+        """(codebase, branch) of a session: git_repo_root, else the codebase that holds its cwd (scope.codebase_of), else none."""
         if rec is None:
             return "none", "none"
         repo, cwd = rec.get("git_repo_root") or "", rec.get("cwd") or ""
         if not repo and cwd and (os.path.isabs(cwd) or cwd.startswith("~")):
             if cwd not in self._roots:
                 try:
-                    codebase = ports.get("codebase")  # the harness places a folder (island.root_of)
+                    codebase = ports.get("codebase")  # the harness places a folder (scope.codebase_of)
                     self._roots[cwd] = (codebase(cwd) if codebase else None) or ""
                 except Exception:  # a codebase that cannot be placed is none
                     self._roots[cwd] = ""
@@ -720,7 +720,7 @@ class _Measures:
                 self.children_all.setdefault(s["parent"], []).append(s["sid"])
         home = os.path.dirname(os.path.abspath(v.root))
         try:
-            self.profile = ports.need("profile")(home)  # the harness names it (island.profile_of)
+            self.profile = ports.need("profile")(home)  # the harness names it (workdir.profile_of)
         except Exception:
             self.profile = os.path.basename(home) or "store"
         self.scopes = [{"key": "profile", "kind": "profile", "label": self.profile, "parent": None, "n": len(S)}]
@@ -1568,7 +1568,7 @@ class View(Reader):
         visual channel: scope is a control, context is the column axis, family is the row axis, inclusion is a toggle.
 
         SCOPE   where the work ran: profile (the store) > codebase > branch. A session's codebase is state.db
-                sessions.git_repo_root, else the codebase that holds sessions.cwd (island.root_of), else "none"; its
+                sessions.git_repo_root, else the codebase that holds sessions.cwd (scope.codebase_of), else "none"; its
                 branch is sessions.git_branch. A store with no state.db has one scope, the profile. codebase= and
                 branch= keep only the sessions of that scope (their roll-ups too). dims.scope lists all scopes.
         CONTEXT the columns, dims.context: unit "time" has hour buckets (the data spans 72 hours or fewer) or day buckets

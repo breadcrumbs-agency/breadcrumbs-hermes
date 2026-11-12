@@ -1,3 +1,4 @@
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import base64
 import contextlib
 import io

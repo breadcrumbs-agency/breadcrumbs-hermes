@@ -460,12 +460,11 @@ class UsageLogTest(unittest.TestCase):
             [declared] = [line.partition(":")[2] for line in f if line.startswith("provides_hooks:")]
         self.assertLessEqual(set(usage_log.HOOKS), {h.strip() for h in declared.strip().strip("[]").split(",")})
 
-    def test_the_root_registration_reaches_the_file_right_after_the_islands(self):
+    def test_the_root_registration_reaches_the_file_before_the_hook_of_the_family(self):
         from breadcrumbs_hermes import hermes
         ctx = Ctx()
         hermes.register_plugin(ctx, mock.Mock())  # the dials register middleware, not a hook
-        self.assertEqual(list(ctx.hooks)[-6:-1], ["on_session_start", "post_tool_call", "transform_llm_output",
-                                                  "post_api_request", "post_auxiliary_call"])  # then the hook of the family
+        self.assertEqual(list(ctx.hooks)[-3:-1], ["post_api_request", "post_auxiliary_call"])  # then the hook of the family
         ctx.hooks["post_api_request"](**api_kw())
         ctx.hooks["post_auxiliary_call"](**aux_kw())
         self.assertEqual(self.lines(), [API_LINE, AUX_LINE])

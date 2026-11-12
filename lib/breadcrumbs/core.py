@@ -9,7 +9,8 @@ Three thin servers carry the same verb table, and none of them has logic of its 
     sock.py  one JSON line each way over a Unix socket or loopback TCP (the framing of hive.py)
     a2a.py   A2A over HTTP on loopback (agent card and message/send)
 
-Stores: "default" is ~/.hermes/breadcrumbs, each profile is "<name>" (~/.hermes/profiles/<name>/breadcrumbs), and
+Stores: "default" is ~/.hermes/breadcrumbs, each scope (a git repository or a folder with .breadcrumbs, scope.py) is its id
+(~/.hermes/breadcrumbs/scopes/<id>), each profile is "<name>" (~/.hermes/profiles/<name>/breadcrumbs), and
 "local" is --home or $BREADCRUMBS_HOME when it is neither. A verb takes `store`: a name, or "*" for all. With no
 store, find, open and zoom look in all of them (a crumb id is a content hash, so the same id names the same text in
 every store), and trail takes "local" when it is there, else "default". Each Reader stays open (resident) and is
@@ -26,7 +27,7 @@ import sys
 import threading
 import time
 
-from . import ports
+from . import ports, scope
 from .reader import Reader
 
 VERSION = "0.1.0"
@@ -79,11 +80,14 @@ class Stores:
         return os.path.join(self.root, "breadcrumbs")
 
     def names(self):
-        """{name: folder}, in the order that the verbs look: local, default, then the profiles."""
+        """{name: folder}, in the order that the verbs look: local, default, the scopes, then the profiles."""
         out = {}
         if self.local and os.path.realpath(self.local) != os.path.realpath(self.base):
             out["local"] = self.local
         out["default"] = self.base
+        for sc in scope.known(self.base):  # the scopes (a git repository, a folder with .breadcrumbs): name = its id
+            if sc["id"] not in out and sc["present"]:
+                out[sc["id"]] = sc["path"]
         profiles = os.path.join(self.root, "profiles")
         try:
             for name in sorted(os.listdir(profiles)):

@@ -82,15 +82,19 @@ Claude Code, OpenCode and Hermes read one file, each with its own tool, each int
 `1721f9ac` in all three stores, and no pane waited for a lock: 0.110 ms in total. The adapters for the two other
 programs are not in this release.
 
-## ONE CODEBASE, ONE MEMORY: THE ISLANDS ARE AUTOMATIC!
+## ONE MEMORY FOR EACH GIT REPOSITORY OR FOLDER, NO PROFILES!
 
-`[ISLAND] ANOTHER CODEBASE IN THE CHAT → A RED OFFER IN THE NEXT REPLY · /island GIVES IT ITS OWN PROFILE · /viz OPENS ITS MEMORY`
+`[PROJECT] THE FOLDER OF THE CHAT → ITS GIT REPOSITORY, OR THE FOLDER ITSELF → ITS OWN MEMORY · /scope SHOWS IT · /viz OPENS IT`
 
-A Hermes profile is an island with one memory. breadcrumbs finds the codebase of each tool call. When a chat works
-in a codebase that is not the island of its profile, the next reply ends with a red offer, and one command,
-`/island PATH`, gives that codebase its own profile and its own memory. When a profile already holds that codebase,
-the offer names it: `hermes -p NAME`. A chat that starts inside its island gets a note, and `/viz` opens the explorer
-of that memory from the chat. The offer changes nothing by itself.
+A chat's memory is chosen by where the chat works, not by which Hermes profile runs it. breadcrumbs reads the folder
+of the chat, takes its git repository (a linked worktree or a submodule counts as its main repository), a folder
+that holds a `.breadcrumbs` file or folder, or else a source tree, or else the folder itself, and opens the store of
+that project. Where nothing says otherwise, the project is the git repository or the current directory. A chat in
+another repository has another memory, so recall in one codebase never brings back a crumb of another. Scopes nest
+(a monorepo that holds repositories): automatic recall stays in the nearest scope, and `crumb_find` takes `scope`
+`"up"` (the scopes above, then the default memory) or `"all"` to read further. A chat in the home folder uses the
+default memory of the profile, as does a place with a `.breadcrumbs` file that says `off`. Nothing creates, clones or
+switches a Hermes profile.
 
 ## ALL OF LOCOMO IN 0.17 SECONDS!
 
@@ -206,11 +210,10 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
   to 5% of turns. The tools `crumb` and `crumb_find`. A receipt for each read. Tool calls and their results
   become linked `step` and `tool` crumbs.
 - **A context engine** (ACE): `hermes config set context.engine breadcrumbs`.
-- **`/island`**: one codebase for each profile, so that two codebases do not dilute one memory. It is a slash
-  command and three hooks. The dial `family` adds a fourth hook, `transform_tool_result` (see the handbook below).
-- **`/viz`**: a slash command that opens the explorer of the profile's memory from a chat, with no command line.
+- **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
+  hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
+- **`/viz`**: a slash command that opens the explorer of the memory of the chat's scope, with no command line.
 - **One core for every harness** (`breadcrumbs/core.py`): six read-only verbs (`find`, `open`, `zoom`, `trail`, `stores`, `health`) over all stores at once (`~/.hermes`, each profile, and `--home` as `local`), held open in one process. Three thin servers carry the same table: `python -m breadcrumbs core mcp` (MCP over stdio), `core sock` (a Unix socket, mode 0600; `--tcp PORT` adds loopback TCP that wants `core.token`) and `core a2a` (A2A 0.3 on 127.0.0.1 with a bearer token). A client names itself (MCP `clientInfo`, the A2A `User-Agent` or `X-Harness`, the `harness` field of a socket request); the core tells Hermes, Claude Code, Codex and OpenCode apart, counts their calls in `health`, and `core setup [HARNESS]` prints the command that adds the MCP server to each one.
-- **Explorer at start**: a CLI or TUI chat opens the explorer once per process. In cmux it is a browser split; in tmux it is a pane that runs `term` (that needs a terminal that reads the Kitty graphics protocol); in a bare console the OS opens the page. `BREADCRUMBS_VIZ=0` turns it off.
 - **The explorer.** It opens a session as a document: turn frames, phase bands, tool and file cards. It draws
   the receipts as a Gantt chart (crumbs by turns; each bar holds the text that the model saw) and a Venn of
   recalled, found and opened crumbs (one frame of crumb texts for each region). It runs in a browser (`serve`),
@@ -481,43 +484,31 @@ hook sees. There the hook adds no line. The import and the `worker` receipt do n
 </details>
 
 <details>
-<summary><b>One codebase per profile: islands</b></summary>
+<summary><b>One memory for each git repository or folder: scopes</b></summary>
 
-A profile has one memory. Two codebases in one chat dilute the context: the chat holds the text of both,
-and recall can bring back a crumb of the wrong codebase. The purpose of `/island` is to keep the context
-from losing the benefits of breadcrumbs through dilution. It gives a codebase its own profile, so each
-profile works in one codebase. breadcrumbs has no measurement of this dilution yet.
+Two codebases in one memory dilute it: recall can bring back a crumb of the wrong codebase. Hermes profiles can keep
+them apart, but a profile is a whole agent (keys, skills, sessions, a gateway), and one profile for each repository is
+more machinery than the problem needs. breadcrumbs keys the memory to the place instead.
 
-breadcrumbs finds the codebase of each tool call: the git repository under your home folder that holds
-the call's path. A worktree or a submodule counts as its main repository. Hermes's own files, repositories
-in hidden folders (`~/.pyenv`) and folders outside your home folder are not codebases. When the profile's
-`terminal.cwd` is in a codebase, that codebase is the island of the profile.
-
-- **The offer.** When a chat makes 3 calls in a codebase that is not the island of its profile, its next
-  reply ends with a red offer. A profile with no island (the default profile, for example) gets the offer
-  at the first call in its first codebase, in the first reply that follows. With no tool call yet, the
-  first reply carries it for the codebase of the launch folder (0 calls). A profile with an island gets it
-  at a second codebase. The offer names the
-  codebases and gives one command: `/island PATH`, or `hermes -p NAME` when another
-  profile has that codebase as its island. A chat gets the offer one time for each codebase. The offer
-  changes nothing by itself.
-- **The handoff.** In a chat, `/island` asks first in a modal picker (Yes / No), then gives the codebase that Hermes was launched in its own profile and asks Hermes to end the chat (`/quit`, best effort); only a Yes acts. A PATH skips the question. A chat that starts inside the island of its profile gets one NOTE at its first reply with the ways to open the visualizer (the desktop map item, `term` in Kitty or Ghostty, `serve --open` in a browser). A messaging chat (Telegram, Discord, ...) gets a disclaimer instead: use a local session or `hermes islands island PATH`. The CLI, TUI and desktop chats that the gateway (gatewayd) runs are local sessions.
-  `/island PATH [NAME]` names another codebase or another profile name. A relative PATH is in the chat's folder (where Tab completes a path). The
-  `terminal.cwd` of that profile is the root of the repository. The answer gives the command that
-  continues the work there: `hermes -p NAME`.
-- **The checks.** `/island status` shows the island of this profile, the islands of all profiles,
-  the problems of each island, and the codebases of this profile's own tool calls. `/island --all` gives
-  the island of each profile and the codebases of its tool calls, with a verdict.
+- **The project of a folder** is the nearest of: a folder with a `.breadcrumbs` entry (any depth; a file whose text is `off`
+  says this place has no project and uses the default memory), a git repository (a worktree or submodule is its main
+  repository), a source tree (a folder with `pyproject.toml`, `package.json`, ...), and else the folder itself. The home
+  folder is the one exception: its project is the profile's default memory, which keeps what it already holds.
+- **The folder of the chat** is what Hermes gives as the session cwd (`agent.runtime_cwd`), else `TERMINAL_CWD`, else the folder
+  of the process. Hermes passes a memory provider no folder, so breadcrumbs reads it itself.
+- **The store** of a scope is `<profile home>/breadcrumbs/scopes/<name>-<8 hex>` (the hex is from the real path). It is not in
+  the repository, so no memory reaches git. A `config.json` there overrides the default `config.json` of the profile.
+- **Reading further.** Automatic recall and every write use the nearest scope. `crumb_find` with `scope: "up"` also reads the
+  scopes above and the default memory; `"all"` reads every scope of the profile. A hit of another scope sits under a
+  `◇ scope NAME` line, and `crumb(id)` opens an id that another scope holds (a crumb id is a content hash).
+- **Off.** `BREADCRUMBS_SCOPE=off` or `"scope": "off"` in `config.json`: every chat uses the default memory.
 
 ```sh
-python3 -m breadcrumbs sources PROFILE   # the codebases of the profile's past tool calls: calls, chats, last use
+python3 -m breadcrumbs scopes [PROFILE]            # the scopes that have a memory
+python3 -m breadcrumbs scopes --here PATH          # the scope of a folder, and the scopes above it
 ```
 
-The new profile is a clone of the profile that runs the command. Hermes's own CLI makes the clone and
-sets its `terminal.cwd`. When a profile with the default name exists and has no island, it gets the
-island (its `terminal.cwd`); `/island` makes no second profile. breadcrumbs
-needs no other plugin for `/island`. Hermes also copies the folder of the memory provider into a clone,
-so a new island starts with a copy of the breadcrumbs store of the old profile.
+The ACE context engine and its logs (`ace.log`, `usage.log`) stay in the profile's default store.
 
 </details>
 
@@ -534,11 +525,11 @@ danger. breadcrumbs gives each danger a guard and a signal.
 | Recall and the `crumb` tools bring past text back as crumbs. | The model can open the wrong crumb, or no crumb. | Each event is a receipt: the refs, levels and bytes that the model saw, in a hash chain. | `rcpt` crumbs |
 | A small model writes summaries. | A summary can be wrong. | A `sum` crumb keeps the model's SHA-256 and the exact prompt. Its sources stay exact. | `sum` crumbs |
 | The hive searches other hosts. | Text from another host comes into the context. | Each part must pass its CRC32C check. A late peer passes. The id names the peer. | receipts with `id@peer/store` |
-| One memory per profile | Two codebases in one chat dilute the context and mix their recall. | A red offer at the 3rd call. `/island PATH` gives the codebase its own profile. | `islands.json` |
+| One memory for each codebase. | Two codebases in one memory dilute the context and mix their recall. | The store follows the git repository or folder of the chat; `crumb_find` reads further only on request (`scope`). | `scope.json` |
 | ACE raises its target when the tool calls only read. | A larger target costs more tokens in each request. | Only a fold interval with no work raises the target (by 1.45), up to Hermes's threshold or `ace_ceiling`. An interval with work folds as before. | `act=ratchet` in `ace.log` |
 
-Each signal is a file (`ace.log`, `islands.json`) or a crumb (`rcpt`, `sum`) that you can read.
-`/island` is a command of breadcrumbs.
+Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that you can read.
+`/scope` and `/viz` are commands of breadcrumbs.
 
 </details>
 
@@ -564,19 +555,11 @@ Each signal is a file (`ace.log`, `islands.json`) or a crumb (`rcpt`, `sum`) tha
   to record its SHA-256. The subprocess gets a minimal environment: `PATH`, `HOME`, `LANG`, `TMPDIR`,
   and the `LC_*`, `LLAMA_*`, `GGML_*` and GPU variables, never a name with KEY, TOKEN, SECRET or
   PASSWORD (`summarize.child_env`). `BREADCRUMBS_SUMMARIZE=0` turns this off.
-- `/island` asks first, in a Yes or No picker. After a Yes, it runs `hermes profile create NAME --clone-from
-  CURRENT` and `hermes -p NAME config set terminal.cwd PATH` as child processes (stdin closed, 300 seconds at
-  most for each), and then asks Hermes to end the chat with `/quit`. The clone copies the keys, the plugins and
-  the memory files of the profile that it comes from. A profile that exists and has no island gets only the
-  `config set`. `/island PATH` skips the question.
-- It writes `islands.json` in the store folder: for the newest 64 chats, the codebases of their tool calls, with
-  counts. `post_tool_call` reads the paths in the arguments of each tool call. `on_session_start` reads the
-  folder that the chat started in. `transform_llm_output` adds the offer to a reply when the chat mixes
-  codebases (and, one time, a note on the ways to open the explorer when a chat starts in its island).
-- The island checks (`/island status`, `/island --all`) read the `config.yaml` of the profiles (their
-  `terminal.cwd` and `memory.provider`) and look in the `plugins` folder of a profile for this plugin.
-  To count the codebases of past tool calls, `/island status` reads the `state.db` of this profile,
-  `/island --all` the `state.db` of every profile, and `sources PROFILE` that of one profile (all read-only).
+- It makes a store folder under `<profile home>/breadcrumbs/scopes/` for each scope that a chat works in, with a `scope.json`
+  (its real path and kind). It reads the folder of the chat and looks for `.git` and `.breadcrumbs` entries in that folder and
+  its parents. It starts no process, makes no profile, and changes no config of Hermes.
+- `/scope` shows the scope of the chat and the scopes that have a memory (read-only). `python3 -m breadcrumbs scopes` does the same
+  from a shell.
 - The dashboard API (the Desktop page) is read-only, and the dashboard's session secret guards it. It reads the
   store of the active profile. A request with `store=NAME` reads the store, or the `state.db` for the log
   views, of another profile of the same Hermes root, and `/stores` lists those stores with their paths and

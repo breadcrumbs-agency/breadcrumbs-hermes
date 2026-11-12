@@ -5,7 +5,7 @@ it draws in the terminal (`term`). Anywhere else it opens the default browser. T
 read-only `serve` process on a fixed port; a second `viz` reuses it.
 
 autostart: a Hermes chat that starts in a terminal gets the explorer once (cmux or tmux: a split; a bare
-console: the OS opens it). See island.Tracker.on_session_start.
+console: the OS opens it). No harness starts it by itself now; `/viz` opens it.
 """
 import os
 import shlex

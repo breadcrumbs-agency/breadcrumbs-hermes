@@ -6,7 +6,7 @@ registration happen once, whichever import comes first.
     ports      neighbor dial state codebase profile hide blocked  (for the viewers, the hive and the searches)
                price  (the rates of a model, for the cache metrics: breadcrumbs/usage.py)
                ace_join  (each ace.log line with the request that it shaped: ace.join)
-    commands   ace dials ingest-hermes sources seats seat no-vis  (island, seats, dials, ace, the hide list)
+    commands   ace dials ingest-hermes scopes seats seat no-vis  (scopes, seats, dials, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`)
 
@@ -49,7 +49,7 @@ def register(ctx):
     provider = _provider_class()(name=_NAME)  # first: with _DEV it reloads the package
     ctx.register_memory_provider(provider)
     from breadcrumbs_hermes import ace
-    from breadcrumbs_hermes.hermes import register_plugin  # the handbook, the dials and the islands
+    from breadcrumbs_hermes.hermes import register_plugin  # the handbook, the dials, /scope and /viz
     register_plugin(ctx, provider)
     if hasattr(ctx, "register_context_engine") and ace.wanted(name=_NAME):
         ctx.register_context_engine(ace.Ace(name=_NAME))
@@ -136,12 +136,14 @@ def _state(path, fn, connect=None):
 
 
 def _codebase(folder):
-    from .island import root_of
-    return root_of(folder)
+    from breadcrumbs import scope
+    from .workdir import hermes_root
+    got = scope.nearest(folder, exclude=[hermes_root()])
+    return got[1] if got and got[0] != scope.DIR else None  # the viewer's chips name repositories; a bare folder is "none"
 
 
 def _profile(home):
-    from .island import profile_of
+    from .workdir import profile_of
     return profile_of(home)
 
 
@@ -228,19 +230,33 @@ def _ingest(args, home):
     return _stored(home, run)
 
 
-def _add_sources(sub):
-    p = sub.add_parser("sources", help="the codebases in a profile's tool calls (islands)")
-    p.add_argument("profile")
+def _add_scopes(sub):
+    p = sub.add_parser("scopes", help="the scopes of a profile: a git repository or a folder with .breadcrumbs, "
+                                      "each with its own memory")
+    p.add_argument("profile", nargs="?", default="default")
+    p.add_argument("--here", default=None, metavar="PATH", help="the scope of PATH instead of the list")
 
 
-def _sources(args, home):
-    from breadcrumbs import cli
-    from . import island
-    home = cli.hermes_home(args.profile)
-    own = island.own_root(home)
-    for root, (calls, chats, last) in sorted(island.scan(home).items(), key=lambda kv: -kv[1][0]):
-        print("%7d calls %5d chats  %s  %s%s" % (calls, chats, time.strftime("%Y-%m-%d", time.localtime(last)),
-                                               island.short(root), "  (the island of this profile)" * (root == own)))
+def _scopes(args, home):
+    import os
+    from breadcrumbs import cli, scope
+    from . import workdir
+    base = os.path.join(cli.hermes_home(args.profile), "breadcrumbs")
+    if args.here:
+        found = workdir.scope_chain(args.here)
+        if not found:
+            print("%s: no scope (no git repository, .breadcrumbs folder or source tree): the default memory" % args.here)
+            return 0
+        for i, (kind, root) in enumerate(found):
+            print("%s %s  (%s)  memory %s" % ("here " if i == 0 else "above", scope.short(root), kind,
+                                             scope.short(scope.store_home(base, root))))
+        return 0
+    got = scope.known(base)
+    for s in got:
+        print("%-8s %-9s %s  (%s)%s" % ("memory" if s["present"] else "empty", s["kind"], scope.short(s["root"]), s["id"],
+                                         "" if os.path.isdir(s["root"]) else "  [folder gone]"))
+    if not got:
+        print("no scope has a memory yet (a chat in a git repository starts one)")
     return 0
 
 
@@ -384,7 +400,7 @@ if ports.layer("hermes", __file__):
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
     ports.command("slot", _add_slot, _slot, after="vault")
     ports.command("install-hermes", _add_install, _install, after="vault")
-    ports.command("sources", _add_sources, _sources, after="vault")
+    ports.command("scopes", _add_scopes, _scopes, after="vault")
     ports.command("seats", _add_seats, _seats, before="hive")
     ports.command("seat", _add_seat, _seat, before="hive")
     ports.command("no-vis", _add_novis, _novis, after="hive", hidden=True)

@@ -1,6 +1,7 @@
 """One memory budget for each user turn. With a turn factor above 0, recall, find and open
 share turn_factor x the recall budget. A full turn cuts find to handles and open to the level that
 fits, and the result says so. The default (0) changes nothing."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import tempfile

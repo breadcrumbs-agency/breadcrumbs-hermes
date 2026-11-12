@@ -1,6 +1,7 @@
 """A slot: another Hermes memory provider on top of breadcrumbs (a pass-through). Hermes runs one external
 memory provider; with a slot, breadcrumbs is that provider, and each call goes THRU it to the other one:
 Hermes sees the other provider's answers as before, and breadcrumbs keeps a copy under it."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json

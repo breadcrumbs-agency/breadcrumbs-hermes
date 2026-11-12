@@ -1,5 +1,6 @@
 """Supersede tags: a separate crumb says that crumb OLD is superseded by crumb NEW; a neg tag retracts it.
 The commits of the ref "tags" keep the order; the index keeps the current state."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json

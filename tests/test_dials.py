@@ -1,5 +1,6 @@
 """The dials of each model (dials.py): target, fold share, fold cap and ratchet step reach the engine, and each
 model's request options reach the OpenAI chat-completions wire."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import sys

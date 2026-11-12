@@ -44,7 +44,7 @@ TITLE_MAX = 60  # the characters of a title in a line
 def _root(hermes=None):
     if hermes:
         return str(hermes)
-    from .island import hermes_root
+    from .workdir import hermes_root
     return hermes_root()
 
 
@@ -113,7 +113,7 @@ def change(action, names, hermes=None):
     if action not in ("add", "rm"):
         raise ValueError("change: %r is not add or rm" % (action,))
     names, hermes = list(dict.fromkeys(names)), _root(hermes)
-    from .island import profiles
+    from .workdir import profiles
     with _locked(hermes):
         tags = load(hermes)
         if action == "add":
@@ -207,7 +207,7 @@ def blocked(home, sid="", hermes=None):
 def sessions(hermes=None):
     """Every session of every profile's state.db (read-only): [(id, profile, started_at, title)], newest first."""
     from . import logview
-    from .island import profiles
+    from .workdir import profiles
 
     def run(conn):
         have = {r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()}
@@ -230,7 +230,7 @@ def sessions(hermes=None):
 def _in_store(sid, hermes):
     """The profile whose breadcrumbs store holds session sid (a session that no state.db lists), or None."""
     from .hermes import _ref_name
-    from .island import profiles
+    from .workdir import profiles
     for name, home in profiles(hermes):
         if os.path.exists(os.path.join(home, "breadcrumbs", "refs", _ref_name("sess-", sid))):
             return name
@@ -257,7 +257,7 @@ def _command(action="list", names=(), hermes=None, out=None):
     except (OSError, ValueError) as e:
         print("breadcrumbs no-vis: %s (fix the file or delete it)" % e, file=sys.stderr)
         return 1
-    from .island import profiles
+    from .workdir import profiles
     rows, names_ = sessions(hermes), [n for n, _ in profiles(hermes)]
     known = {r[0]: r for r in rows}
     if action == "find":
