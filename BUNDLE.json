@@ -1,0 +1,17 @@
+{
+  "target": "hermes",
+  "sources": {
+    "breadcrumbs-hermes": {
+      "commit": "0913a1ca1fe04c486396be8150c5369a9f406fc9",
+      "clean": true
+    },
+    "breadcrumbs-common": {
+      "commit": "52211b2a5ceca9c220b5ebe51a314446f939211a",
+      "clean": true
+    },
+    "breadcrumbs-spacegraph": {
+      "commit": "2f197c2d172259f4582d726ffa9316c1c53671cb",
+      "clean": true
+    }
+  }
+}
