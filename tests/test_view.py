@@ -1152,14 +1152,62 @@ class MeasuresTest(unittest.TestCase):
         self.assertEqual(self.v.measures(m=keys)["facts"], [])
 
     def test_the_request_axis_pairs_an_ace_line_with_the_usage_line_that_follows_it(self):
-        ace = [{"ts": 10, "n": "a1"}, {"ts": 20, "n": "a2"}, {"ts": 40, "n": "a3"}]
-        use = [{"ts": 11, "n": "u1"}, {"ts": 12, "n": "u1b"}, {"ts": 41, "n": "u3"}, {"ts": 90, "n": "u4"}]
+        ace = [{"ts": 10, "n": "a1", "sess": "s", "act": "pass"}, {"ts": 20, "n": "a2", "sess": "s", "act": "keep"},
+               {"ts": 40, "n": "a3", "sess": "s", "act": "fold"}]
+        use = [{"ts": 11, "n": "u1", "sess": "s", "task": "main"}, {"ts": 12, "n": "u1b", "sess": "s", "task": "main"},
+               {"ts": 41, "n": "u3", "sess": "s", "task": "main"}, {"ts": 90, "n": "u4", "sess": "s", "task": "main"}]
+
+        def pairs(slots):
+            return [(s["ace"] and s["ace"]["n"], s["usage"] and s["usage"]["n"], [m["n"] for m in s["more"]]) for s in slots]
+
+        # the pairs come from the one join (the port ace_join): a2 and a3 shaped u3, and its line is the fold
         slots = view.request_slots(ace, use)
-        self.assertEqual([(s["ace"] and s["ace"]["n"], s["usage"] and s["usage"]["n"]) for s in slots],
-                         [("a1", "u1"), (None, "u1b"), ("a2", None), ("a3", "u3"), (None, "u4")])
+        self.assertEqual(pairs(slots), [("a1", "u1", []), (None, "u1b", []), ("a3", "u3", ["a2"]), (None, "u4", [])])
+        self.assertEqual([s["ts"] for s in slots], [10, 12, 20, 90])
+        self.assertEqual(view.request_slots([], use)[0]["ace"], None)
+        self.assertEqual(len(view.request_slots(ace, [])), 3)
+        # no harness gives the join: an ace line opens a slot and the first usage line after it closes it
+        saved = ports.get("ace_join")
+        self.addCleanup(ports.give, "ace_join", saved)
+        ports.give("ace_join", None)
+        slots = view.request_slots(ace, use)
+        self.assertEqual(pairs(slots), [("a1", "u1", []), (None, "u1b", []), ("a2", None, []), ("a3", "u3", []), (None, "u4", [])])
         self.assertEqual([s["ts"] for s in slots], [10, 12, 20, 40, 90])
         self.assertEqual(view.request_slots([], use)[0]["ace"], None)
         self.assertEqual(len(view.request_slots(ace, [])), 3)
+
+    def test_the_request_axis_puts_a_line_in_the_slot_of_the_request_that_it_shaped(self):
+        def line(n, ts, act="pass"):
+            return {"n": n, "ts": ts, "sess": "s", "act": act}
+
+        def req(n, ts, dur):
+            return {"n": n, "ts": ts, "dur": dur, "sess": "s", "task": "main", "req": n}
+
+        ace = [line("E", -30), line("L1", 94), line("L2", 100), line("K", 131, "keep"), line("F", 132, "fold"),
+               line("P1", 141), line("P2", 142), line("Z", 200)]
+        use = [req("R1", 100, 5.2), req("R2", 110, 9.6), req("R3", 131, 2), req("R4", 140, 5), req("R5", 150, 3)]
+
+        def pairs(slots):
+            return [(s["ace"] and s["ace"]["n"], s["usage"] and s["usage"]["n"], [m["n"] for m in s["more"]]) for s in slots]
+
+        slots = view.request_slots(ace, use)
+        self.assertEqual(pairs(slots), [
+            ("E", None, []),       # a line more than 120 s before the first request starts joins nothing: its own slot
+            ("L1", "R1", []),      # a line before the first request joins it
+            ("L2", "R2", []),      # a line in the second that R1 ended shaped R2 (it starts at 100.4), not R1
+            (None, "R3", []),      # a request that no line joins
+            ("F", "R4", ["K"]),    # two lines join R4: the fold is its line, the keep is kept with it
+            ("P1", "R5", ["P2"]),  # of two lines of one act, the first
+            ("Z", None, [])])      # a line after the last request
+        self.assertEqual([s["ts"] for s in slots], [-30, 94, 100, 131, 131, 141, 200],
+                         "a slot's time is its first line; in one second the request that ended sooner goes first")
+        # no harness gives the join: the old slots, where L2 closes with R1 and R2 is a slot of its own
+        saved = ports.get("ace_join")
+        self.addCleanup(ports.give, "ace_join", saved)
+        ports.give("ace_join", None)
+        self.assertEqual(pairs(view.request_slots(ace, use)), [
+            ("E", None, []), ("L1", None, []), ("L2", "R1", []), (None, "R2", []), ("K", "R3", []), ("F", "R4", []),
+            ("P1", None, []), ("P2", "R5", []), ("Z", None, [])])
 
     def test_the_time_axis_is_linear_and_a_time_has_a_place_on_it(self):
         kind, starts = view.time_buckets(1794000000, 1794000000 + 5 * 3600 + 5)
