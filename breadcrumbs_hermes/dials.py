@@ -19,11 +19,12 @@ A "models" entry also holds the request options of a model (temperature, top_p, 
 dial and does not start with "ace_". So one entry holds a model's temperature and the ACE dials that suit that
 temperature (ace.Ace._dial). Hermes sends no temperature of its own on the OpenAI chat-completions wire. The main
 agent passes none to the transport, and agent/transports/chat_completions.py _base_kwargs reads one only from a
-provider profile's fixed value. install() wraps ChatCompletionsTransport.build_kwargs, so the options go into
-every chat-completions request after Hermes builds it: a key of the OpenAI spec at the top level, any other
-sampler key (top_k, min_p, repetition_penalty, ...) in extra_body, and a null removes the key. Only this open
-wire changes, and only for a provider that you call with an API key (or none). The Anthropic wire, and each
-provider that logs in with OAuth (oauth()), keep the request that Hermes builds: their terms can forbid a
+provider profile's fixed value. register() adds Hermes's public llm_request middleware (developer-guide/middleware),
+so the options go into each chat-completions request of a chat after Hermes builds it: a key of the OpenAI spec at
+the top level, any other sampler key (top_k, min_p, repetition_penalty, ...) in extra_body, and a null removes the
+key. Hermes runs that middleware on the requests of a chat, not on its helper calls (titles, compression, vision).
+Only this open wire changes, and only for a provider that you call with an API key (or none). The Anthropic wire,
+and each provider that logs in with OAuth (oauth()), keep the request that Hermes builds: their terms can forbid a
 change. The file is read at each request, so a change applies to the next request.
 """
 import fnmatch
@@ -78,10 +79,6 @@ DIALS = (
     Dial("ace_diverse", 4, "int", 0, None, "ACE (per model)", None,
          "An interval in which the tool calls write, or use this many different tools, is work and not "
          "reading: the raised target tapers back. 0: only a write counts."),
-    Dial("intercept", False, "bool", None, None, "ACE (per profile)", None,
-         "ACE takes Hermes's built-in compressor in this profile. It changes the compressor of the profile "
-         "through private core imports, so it is off unless true. A profile with context.engine: breadcrumbs "
-         "does not need it."),
     Dial("prefetch_tokens", 300, "int", 1, None, "Recall", "BREADCRUMBS_PREFETCH_TOKENS",
          "The first budget of the recall text in each turn, in tokens. The controller then adapts it, between "
          "budget_min and budget_max (it is saved in horizon.json)."),
@@ -317,43 +314,49 @@ def apply(kwargs, opts):
     return kwargs
 
 
-def oauth(params):
+def oauth(provider):
     """True when the request goes to a provider that logs in with OAuth (nous, qwen-oauth, solstice on this
-    wire). Its terms can forbid a changed request, so it keeps the request that Hermes builds. The profile
-    names its auth type; a provider with no profile (Hermes's legacy path) has a row in Hermes's auth registry."""
-    prof = params.get("provider_profile")
-    kinds = [getattr(prof, "auth_type", ""), getattr(prof, "registry_auth_type", "")]
-    name = str(getattr(prof, "name", "") or params.get("provider_name") or "").strip().lower()
+    wire). Its terms can forbid a changed request, so it keeps the request that Hermes builds. Hermes's provider
+    profile of that name (the public module providers) names its auth type."""
+    name = str(provider or "").strip().lower()
     try:
-        from hermes_cli.auth import PROVIDER_REGISTRY
-        kinds.append(getattr(PROVIDER_REGISTRY.get(name), "auth_type", ""))
-    except Exception:  # not inside Hermes, or its registry changed: the profile decides
-        pass
+        from providers import get_provider_profile
+        prof = get_provider_profile(name) if name else None
+    except Exception:  # not inside Hermes, or its lookup failed: no profile, so no OAuth
+        prof = None
+    kinds = [getattr(prof, "auth_type", ""), getattr(prof, "registry_auth_type", "")]
     return any(str(k or "").startswith("oauth") for k in kinds)
 
 
-def install(home):
-    """Wrap Hermes's chat-completions build once. home() gives the HERMES_HOME at the time of the request."""
-    try:
-        from agent.transports.chat_completions import ChatCompletionsTransport as T
-    except Exception:  # not inside Hermes
-        return False
-    build = T.build_kwargs
-    if getattr(build, "breadcrumbs_dials", False):
-        return True
+def middleware(home):
+    """The llm_request middleware: the options of the model in "models" go into a chat-completions request.
+    home() gives the HERMES_HOME at the time of the request. None keeps the request that Hermes built."""
 
-    def build_kwargs(self, model, messages, tools=None, **params):
-        kwargs = build(self, model, messages, tools, **params)
+    def llm_request(request=None, model=None, provider=None, api_mode=None, **_):
+        if api_mode != "chat_completions" or not isinstance(request, dict):
+            return None
         try:
-            if oauth(params):
-                return kwargs
-            opts = options(config(os.path.join(home(), "breadcrumbs")), model)
-            return apply(kwargs, opts) if opts and isinstance(kwargs, dict) else kwargs
+            if oauth(provider):
+                return None
+            opts = options(config(os.path.join(home(), "breadcrumbs")), model or request.get("model"))
+            if not opts:
+                return None
+            return {"request": apply(dict(request), opts), "source": "breadcrumbs",
+                    "reason": "the request options of the model in config.json (dials.py)"}
         except Exception:  # a bad option must not stop the request
             log.warning("breadcrumbs: the model options for %s were not applied", model, exc_info=True)
-            return kwargs
+            return None
 
-    setattr(build_kwargs, "breadcrumbs_dials", True)
-    setattr(build_kwargs, "__wrapped__", build)
-    T.build_kwargs = build_kwargs
+    return llm_request
+
+
+def register(ctx, home):
+    """Add the middleware where the Hermes context has register_middleware. True when it was added."""
+    if not hasattr(ctx, "register_middleware"):
+        return False
+    try:
+        ctx.register_middleware("llm_request", middleware(home))
+    except Exception as e:  # a Hermes that refuses it still loads the plugin
+        log.debug("breadcrumbs: no llm_request middleware (%s)", type(e).__name__)
+        return False
     return True

@@ -7,3 +7,4 @@ tags: [memory, context-engine, provenance, ipfs]
 license: MIT
 requires_hermes: ">=0.22.5"
 provides_hooks: [on_session_start, post_tool_call, transform_llm_output, post_api_request, post_auxiliary_call, transform_tool_result]
+provides_middleware: [llm_request]

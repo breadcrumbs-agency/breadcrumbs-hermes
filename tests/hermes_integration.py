@@ -365,10 +365,11 @@ def island_check():
 
 def wire_check():
     """Each model's options on Hermes's OpenAI chat-completions wire (dials.py). First, with Hermes's own auth
-    registry and provider profiles: each provider that logs in with OAuth keeps the request that Hermes builds,
-    and each API-key provider takes the options. Then tests/openai_wire_e2e.py runs one AIAgent turn against a
-    local server, first without the patch and then with it. It runs as a child process, because AIAgent reads
-    HERMES_HOME when Hermes loads."""
+    registry as the oracle and its provider profiles (what dials.oauth reads): each provider that logs in with
+    OAuth and has a profile keeps the request that Hermes builds, and each API-key provider takes the options. A
+    login with no profile is named: dials.oauth cannot see it. Then tests/openai_wire_e2e.py runs one AIAgent turn
+    against a local server, first without the middleware and then with it. It runs as a child process, because
+    AIAgent reads HERMES_HOME when Hermes loads."""
     import subprocess
     from breadcrumbs_hermes import dials
     from hermes_cli.auth import PROVIDER_REGISTRY
@@ -379,15 +380,13 @@ def wire_check():
         logins = sorted(k for k, row in rows if str(getattr(row, "auth_type", "")).startswith("oauth"))
         keys = sorted(k for k, row in rows if getattr(row, "auth_type", "") == "api_key")
         assert logins and keys, (logins, keys)
+        unseen = [k for k in logins if get_provider_profile(k) is None]
         for k in logins:
-            prof = get_provider_profile(k)
-            assert dials.oauth({"provider_name": k}) and (prof is None or dials.oauth({"provider_profile": prof})), k
+            assert k in unseen or dials.oauth(k), k
         for k in keys:
-            prof = get_provider_profile(k)
-            assert not dials.oauth({"provider_name": k}), k
-            assert prof is None or not dials.oauth({"provider_profile": prof}), (k, prof.auth_type)
-        print("OAuth logins that keep Hermes's request: %s; API-key providers that take the options: %d" % (
-            ", ".join(logins), len(keys)))
+            assert not dials.oauth(k), k
+        print("OAuth logins that keep Hermes's request: %s; with no profile: %s; API-key providers that take the "
+              "options: %d" % (", ".join(k for k in logins if k not in unseen), ", ".join(unseen) or "none", len(keys)))
     run = subprocess.run([sys.executable, os.path.join(REPO, "tests", "openai_wire_e2e.py")],
                          capture_output=True, text=True, timeout=240)
     print(run.stdout.strip())

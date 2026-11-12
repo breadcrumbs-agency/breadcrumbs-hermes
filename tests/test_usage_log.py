@@ -463,7 +463,7 @@ class UsageLogTest(unittest.TestCase):
     def test_the_root_registration_reaches_the_file_right_after_the_islands(self):
         from breadcrumbs_hermes import hermes
         ctx = Ctx()
-        hermes.register_plugin(ctx, mock.Mock())  # the merged tree has no rebind of Hermes core to keep out (intercept, dials.install)
+        hermes.register_plugin(ctx, mock.Mock())  # the dials register middleware, not a hook
         self.assertEqual(list(ctx.hooks)[-6:-1], ["on_session_start", "post_tool_call", "transform_llm_output",
                                                   "post_api_request", "post_auxiliary_call"])  # then the hook of the family
         ctx.hooks["post_api_request"](**api_kw())

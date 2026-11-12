@@ -49,7 +49,7 @@ def register(ctx):
     provider = _provider_class()(name=_NAME)  # first: with _DEV it reloads the package
     ctx.register_memory_provider(provider)
     from breadcrumbs_hermes import ace
-    from breadcrumbs_hermes.hermes import register_plugin  # the handbook, the intercept and the islands
+    from breadcrumbs_hermes.hermes import register_plugin  # the handbook, the dials and the islands
     register_plugin(ctx, provider)
     if hasattr(ctx, "register_context_engine") and ace.wanted(name=_NAME):
         ctx.register_context_engine(ace.Ace(name=_NAME))

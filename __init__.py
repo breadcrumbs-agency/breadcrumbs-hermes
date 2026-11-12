@@ -14,6 +14,6 @@ def register(ctx):
     # they stay here; register_plugin adds the rest.
     provider = BreadcrumbsProvider()
     ctx.register_memory_provider(provider)
-    register_plugin(ctx, provider)  # the handbook, the intercept and the islands
+    register_plugin(ctx, provider)  # the handbook, the dials and the islands
     if hasattr(ctx, "register_context_engine") and wanted(name=provider.name):  # ACE: where context.engine names it
         ctx.register_context_engine(Ace(name=provider.name))

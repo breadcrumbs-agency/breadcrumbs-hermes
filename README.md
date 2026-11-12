@@ -360,8 +360,10 @@ environment), names a value that is not valid, and names a key that is no dial (
 `"models"` maps a glob of the model name to dials: no one set is best for each model, because a model
 at maximum reasoning writes more thinking, and the thinking that goes back with each message counts in each
 request. The last value that sets a dial wins; the environment variable of a dial wins over the file. A
-`"models"` entry may also hold request options (`temperature`, `top_p`, ...). This release does not send them,
-because it replaces no code of Hermes; the file keeps them, and `dials` names them.
+`"models"` entry may also hold request options (`temperature`, `top_p`, ...). Hermes's public `llm_request`
+middleware puts them into each OpenAI chat-completions request of a chat (not into its helper calls), for a
+provider that you call with an API key; the Anthropic wire and a provider that logs in with OAuth keep the request
+that Hermes builds.
 
 ```json
 {"ace_tokens": 200000, "models": {"*nemotron*": {"ace_tokens": 290000, "ace_fold_to": 0.9}}}
@@ -386,7 +388,6 @@ the target, as always. Before the taper, one chat went from 200k to 609,725 and 
 | `ace_turn_fold` | false | true or false |  | In low gear the first request of each user turn folds again when the chat has a layer, so the layer follows the task. The layer then holds inside the turn, and the prompt cache holds. Needs ace_lockup. |
 | `ace_persist` | 0 | 0 or more |  | The words of the tool calls in the kept turns count as focus words at half weight in the layer, and an old crumb whose rare words come back in later groups of turns gets its weight times 1 plus this number for each of those groups (at most 4). 0: off. |
 | `ace_diverse` | 4 | 0 or more |  | An interval in which the tool calls write, or use this many different tools, is work and not reading: the raised target tapers back. 0: only a write counts. |
-| `intercept` | false | true or false |  | ACE takes Hermes's built-in compressor in this profile. It changes the compressor of the profile through private core imports, so it is off unless true. A profile with context.engine: breadcrumbs does not need it. |
 | `prefetch_tokens` | 300 | 1 or more | `BREADCRUMBS_PREFETCH_TOKENS` | The first budget of the recall text in each turn, in tokens. The controller then adapts it, between budget_min and budget_max (it is saved in horizon.json). |
 | `recall_share` | 0.15 | 0 to 1 | `BREADCRUMBS_RECALL_SHARE` | A turn overflows when the recall text is more than this share of the context. |
 | `neighbor` | 0.3 | 0 to 1 | `BREADCRUMBS_NEIGHBOR` | The weight of dialogue-neighbor smoothing in search: a turn next to a strong hit gets this share of the hit's score. 0: off. |
@@ -416,14 +417,6 @@ the target, as always. Before the taper, one chat went from 200k to 609,725 and 
 
 `python -m breadcrumbs --home <HERMES_HOME>/breadcrumbs ace` shows the size of each chat against its target
 (from `ace.log`; read-only). A model sees only its own context, not the size of it.
-
-ACE also takes Hermes's built-in compressor (the intercept). Hermes runs the built-in where an agent has
-no plugin engine: a profile with no `context.engine`, safe-worker mode, an engine that does not load, and
-the gateway's `/compress`. In a profile whose memory provider is breadcrumbs and that opts in, ACE folds in its place,
-and no model writes a summary. Each capture writes one Hermes warning and one `ace.log` line
-(`act=intercept`). The intercept is opt-in: a profile gets it with `"intercept": true` in
-`$HERMES_HOME/breadcrumbs/config.json`. A profile that selects ACE (`context.engine: breadcrumbs`) does not need
-it.
 
 </details>
 
@@ -525,7 +518,6 @@ danger. breadcrumbs gives each danger a guard and a signal.
 |---|---|---|---|
 | ACE folds older turns into crumbs. Between folds the layer does not change, so the prompt cache holds. | Below level 1, the model sees key words, not the exact text. At 8k and 16k, a plain window holds more exact text. | Each crumb keeps its exact text, and `crumb(id, 1)` gives it back. At 16k or less, the layer takes 15% of a fold. | `ace.log`: one line per request |
 | Recall and the `crumb` tools bring past text back as crumbs. | The model can open the wrong crumb, or no crumb. | Each event is a receipt: the refs, levels and bytes that the model saw, in a hash chain. | `rcpt` crumbs |
-| The intercept puts ACE in place of Hermes's built-in compressor. | It changes the compressor of a profile through private core imports, also a profile that did not select ACE. | It is off unless the profile has `"intercept": true`. Each capture writes one warning and one `ace.log` line. The fallback calls no model. | `ace.log`: `act=intercept` |
 | A small model writes summaries. | A summary can be wrong. | A `sum` crumb keeps the model's SHA-256 and the exact prompt. Its sources stay exact. | `sum` crumbs |
 | The hive searches other hosts. | Text from another host comes into the context. | Each part must pass its CRC32C check. A late peer passes. The id names the peer. | receipts with `id@peer/store` |
 | One memory per profile | Two codebases in one chat dilute the context and mix their recall. | A red offer at the 3rd call. `/island PATH` gives the codebase its own profile. | `islands.json` |
@@ -587,9 +579,22 @@ Each signal is a file (`ace.log`, `islands.json`) or a crumb (`rcpt`, `sum`) tha
   the rows of that child. It writes them, as Hermes stored them, to the child's own store
   (`$HERMES_HOME/breadcrumbs/children/<child session id>/`) and exports them there as a CAR file. Then it
   imports that CAR file into the store of this profile as private crumbs. The CAR file stays on the machine.
-- With the dial `family` on, the hook `transform_tool_result` reads the result of each `delegate_task` call
-  (and no other tool's) and adds one line to the entry of each child that it kept: the handle of that child's
-  session. It changes nothing else, and it sends nothing out.
+- The hook `transform_tool_result` returns at once for every tool but `delegate_task`, and for `delegate_task`
+  while the dial `family` is off. With the dial on, it reads the result of each `delegate_task` call and adds one
+  line to the entry of each child that it kept: the handle of that child's session. It changes nothing else, and
+  it sends nothing out.
+- The hooks `post_api_request` (after each model request of a chat) and `post_auxiliary_call` (after each helper
+  call: titles, compression, approval, vision) each append one line to `$HERMES_HOME/breadcrumbs/usage.log`: the
+  ids of the session, turn and request, the model and provider names, the token counts (input, cache read, cache
+  write, output, reasoning), the message count, the duration and the finish reason. They never read the request,
+  the response, an error text or the base URL into a line, and they change nothing. The file turns over to
+  `usage.log.1` at 1 MB. `BREADCRUMBS_USAGE_LOG=0` writes nothing.
+- The `llm_request` middleware reads `$HERMES_HOME/breadcrumbs/config.json` at each model request of a chat.
+  When a `"models"` entry of the model holds request options (`temperature`, `top_p`, `top_k`, ...), it puts
+  them into that request: a key of the OpenAI spec at the top level, any other in `extra_body`, and a null removes
+  the key. Only the OpenAI chat-completions wire changes, and only for a provider that you call with an API key;
+  the Anthropic wire, a provider that logs in with OAuth and the helper calls keep the request that Hermes builds.
+  With no options for the model, it changes nothing.
 - `share` and `import` write and read CAR files only at the paths you give. No IPFS daemon runs.
 - `push` and `pull` (CLI only) run your local `ipfs` binary (kubo) with your `IPFS_PATH`; what it
   connects to is your kubo configuration. `push` adds only the public crumbs of one project.
