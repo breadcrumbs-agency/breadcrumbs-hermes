@@ -360,7 +360,9 @@ Each signal is a file (`ace.log`, `islands.json`) or a crumb (`rcpt`, `sum`) tha
   its owner serves a store whole (`hive serve --all NAME`, CLI only).
 - One background thread writes summaries after a span or a session closes, never during a model
   turn. It runs the local `llama-completion` binary as a subprocess and reads the model file once
-  to record its SHA-256. `BREADCRUMBS_SUMMARIZE=0` turns this off.
+  to record its SHA-256. The subprocess gets a minimal environment: `PATH`, `HOME`, `LANG`, `TMPDIR`,
+  and the `LC_*`, `LLAMA_*`, `GGML_*` and GPU variables, never a name with KEY, TOKEN, SECRET or
+  PASSWORD (`summarize.child_env`). `BREADCRUMBS_SUMMARIZE=0` turns this off.
 - `/island` asks first, in a Yes or No picker. After a Yes, it runs `hermes profile create NAME --clone-from
   CURRENT` and `hermes -p NAME config set terminal.cwd PATH` as child processes (stdin closed, 300 seconds at
   most for each), and then asks Hermes to end the chat with `/quit`. The clone copies the keys, the plugins and

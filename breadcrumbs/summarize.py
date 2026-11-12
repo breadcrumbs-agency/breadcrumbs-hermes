@@ -43,6 +43,19 @@ ASK = ("Summarize the log below in at most 60 words. Keep names, numbers, file n
        "Do not add facts.\n\nLOG:\n")
 _MODEL_LOCK = threading.Lock()  # one model process at a time per Python process
 _SHA = {}
+# The model process gets only these variables of the Hermes process, never the whole environment (it holds every
+# provider API key): the names below, and llama.cpp and GPU settings by prefix. A name with KEY, TOKEN, SECRET or
+# PASSWORD in it never passes, also under an allowed prefix.
+ENV_NAMES = ("PATH", "HOME", "LANG", "TMPDIR")
+ENV_PREFIXES = ("LC_", "LLAMA_", "GGML_", "CUDA_", "HIP_", "ROCR_", "HSA_", "OMP_")
+_ENV_SECRET = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.I)
+
+
+def child_env(environ=None):
+    """The environment of the model process: the allowed variables of environ (default os.environ), nothing else."""
+    environ = os.environ if environ is None else environ
+    return {k: v for k, v in environ.items()
+            if (k in ENV_NAMES or k.startswith(ENV_PREFIXES)) and not _ENV_SECRET.search(k)}
 _TOO_LONG = re.compile(rb"prompt is too long \((\d+) tokens, max (\d+)\)")
 TRIES = 3
 
@@ -119,7 +132,8 @@ class Llama:
     def __call__(self, prompt):
         argv = self.argv()
         with _MODEL_LOCK:
-            p = subprocess.run(argv, input=prompt.encode("utf-8"), capture_output=True, timeout=self.timeout)
+            p = subprocess.run(argv, input=prompt.encode("utf-8"), capture_output=True, timeout=self.timeout,
+                               env=child_env())
         if p.returncode:
             m = _TOO_LONG.search(p.stderr)
             if m:

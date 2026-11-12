@@ -5,7 +5,7 @@
 # neither (tests/test_plugin_entry.py). Without the package, a pure-Python CRC32C gives the same ids.
 [project]
 name = "breadcrumbs"
-version = "0.4.1"
+version = "0.4.2"
 description = "Content-addressed breadcrumb memory for Hermes: exact provenance, zoom levels 0..1, steady-state context."
 requires-python = ">=3.11"
 license = "MIT"

@@ -382,6 +382,21 @@ class TemplateTest(unittest.TestCase):
             Llama(model="/x.gguf", template="nope")
 
 
+class ChildEnvTest(unittest.TestCase):
+    def test_the_model_process_gets_no_key_of_the_hermes_environment(self):
+        environ = {"PATH": "/bin", "HOME": "/h", "LANG": "C.UTF-8", "LC_ALL": "C", "LLAMA_ARG_THREADS": "4",
+                   "GGML_METAL_PATH_RESOURCES": "/m", "CUDA_VISIBLE_DEVICES": "0", "OPENAI_API_KEY": "sk-x",
+                   "ANTHROPIC_API_KEY": "sk-y", "HERMES_HOME": "/hh", "LLAMA_API_KEY": "k", "GH_TOKEN": "t"}
+        self.assertEqual(summarize_mod.child_env(environ),
+                         {"PATH": "/bin", "HOME": "/h", "LANG": "C.UTF-8", "LC_ALL": "C", "LLAMA_ARG_THREADS": "4",
+                          "GGML_METAL_PATH_RESOURCES": "/m", "CUDA_VISIBLE_DEVICES": "0"})
+        done = subprocess.CompletedProcess([], 0, b"text", b"")
+        with mock.patch.dict(os.environ, environ, clear=True), \
+                mock.patch.object(summarize_mod.subprocess, "run", return_value=done) as run:
+            Llama(model="/x.gguf", exe="/bin/true")("prompt")
+        self.assertEqual(run.call_args.kwargs["env"], summarize_mod.child_env(environ))
+
+
 @unittest.skipUnless(Llama().available(), "llama-completion or the default model file is missing")
 class RealModelTest(Base):
     def test_a_real_summary_is_reproducible_from_its_record(self):
