@@ -57,6 +57,21 @@ from breadcrumbs.ace_core import (  # the engine, and the names that the tests a
     REF_RE, SMALL_TARGET, TARGET_TOKENS, TPB, allocate, cost, crumb_text, is_work, join, layer_cost, logged_counts,
     logged_ratchet, message_text, ref_of, request_bytes, split, status_lines)
 
+
+def context_window(model, context_length):
+    """The context window for a model: the one of its cost profile (breadcrumbs/costs.py) when Hermes gives none, or a
+    smaller one (its metadata of a model it does not know: 256K, say). A larger one that Hermes gives stands, so an
+    override of the config is not lowered. Hermes's value otherwise."""
+    try:
+        from breadcrumbs import costs
+        from breadcrumbs.cli import default_home
+        window = costs.context_window(model, default_home())
+    except Exception:  # no profile to read: Hermes's value
+        window = None
+    if window and (not context_length or int(context_length) < window):
+        return window
+    return context_length
+
 # The public names of this module: its own, and the names of breadcrumbs.ace_core that it re-exports (the tests and the
 # other modules of Hermes read them here).
 __all__ = ["Ace", "BLOCK_NAMES_CRUMB", "CHILD_PLATFORM", "DIAL_DEFAULTS", "Engine", "FOLD_CAP", "FOLD_TO", "GAP", "HANDLE",
@@ -115,6 +130,7 @@ class Ace(Engine, ContextEngine):
         self.model = str(model or "")
         if self.root:  # a model switch inside a session takes the dials of the new model
             self._dial()
+        context_length = context_window(self.model, context_length)
         if ContextEngine is not object:
             return super().update_model(model, context_length, base_url, api_key, provider, api_mode)
         self.context_length, self.threshold_tokens = context_length, int(context_length * self.threshold_percent)

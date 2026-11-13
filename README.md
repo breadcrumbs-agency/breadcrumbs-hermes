@@ -419,6 +419,7 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `overflow_low` | 0.02 | 0 to 1 |  | The controller raises the budget when fewer turns than this share overflow. |
 | `overflow_high` | 0.05 | 0 to 1 |  | The controller lowers the budget when more turns than this share overflow. |
 | `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only), writes them to the child's own store (the folder children/ID of the breadcrumbs folder), and exports them there as a CAR file. It then imports the CAR into the profile's own store as private crumbs. When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
+| `update_ms` | 2,000 | 200 to 60000 | `BREADCRUMBS_UPDATE_MS` | The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the map, the context and the trail; the measures poll at three times it. Read from the top level of config.json and from the environment (breadcrumbs/tuning.py; a test keeps them equal). A value of a 'models' entry is not used here. |
 
 | Environment knob | Default | What it does |
 |---|---|---|
@@ -434,9 +435,6 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `BREADCRUMBS_GRAAL_HEAP` | 4g | The heap of a GraalPy run. |
 | `BREADCRUMBS_IPFS` | ipfs on the PATH | The kubo binary, for `push`, `pull` and the hive. |
 | `BREADCRUMBS_HERMES_REPO` | ~/.hermes/hermes-agent | The Hermes checkout that `seat` commands read. |
-
-`python -m breadcrumbs --home <HERMES_HOME>/breadcrumbs ace` shows the size of each chat against its target
-(from `ace.log`; read-only). A model sees only its own context, not the size of it.
 
 </details>
 

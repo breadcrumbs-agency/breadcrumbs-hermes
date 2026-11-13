@@ -163,9 +163,18 @@ _PRICES = {}  # (model, provider) -> rates or None: one ask of Hermes's table fo
 
 
 def _price(model, provider):
-    """The price port (breadcrumbs/usage.py): (input, cache read, cache write) in USD per 1M tokens, from Hermes's own table
-    (agent/usage_pricing.py get_pricing_entry), or None: no Hermes on the path, an unknown model, or a missing rate.
-    Imported at the first ask, inside a try: a view without Hermes still opens. No price is copied into this package."""
+    """The price port (breadcrumbs/usage.py). First the cost profile of the model (breadcrumbs/costs.py: the built-in
+    profiles and <breadcrumbs home>/costs.json), as tiers when its price steps up with the prompt; else the rates from
+    Hermes's own table (agent/usage_pricing.py get_pricing_entry): (input, cache read, cache write) in USD per 1M tokens.
+    None: no price. Imported at the first ask, inside a try: a view without Hermes still opens. No price is copied here."""
+    try:
+        from breadcrumbs import costs
+        from breadcrumbs.cli import default_home
+        _, prof = costs.lookup(model, default_home())
+        if prof is not None:
+            return costs.price_tiers(prof)
+    except Exception:  # a profile that cannot be read is no profile: Hermes's table answers
+        pass
     key = (model, provider or None)
     if key not in _PRICES:
         try:

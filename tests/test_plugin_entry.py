@@ -110,10 +110,21 @@ class RootPluginTest(unittest.TestCase):
     def test_the_root_registers_the_dispatch_handbook_with_the_tools(self):
         ctx = SkillCtx()
         load_root().register(ctx)
-        [(name, path, about)] = ctx.skills
-        self.assertEqual(name, "dispatch")
-        self.assertTrue(os.path.isfile(path), path)
-        self.assertTrue(0 < len(about) <= 60, about)
+        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch", "hierarchy"])
+        for name, path, about in ctx.skills:
+            self.assertTrue(os.path.isfile(path), path)
+            self.assertTrue(0 < len(about) <= 60, about)
+        self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")  # only the handbook is named in the prompt
+
+    def test_a_refused_hierarchy_skill_leaves_the_handbook_in_place(self):
+        class RefusesHierarchy(SkillCtx):
+            def register_skill(self, name, path, description="", frontmatter=None):
+                if name == "hierarchy":
+                    raise ValueError("a clash of names")
+                super().register_skill(name, path, description, frontmatter)
+        ctx = RefusesHierarchy()
+        load_root().register(ctx)
+        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch"])
         self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")
 
     def test_the_handbook_takes_the_name_that_hermes_gave_the_plugin(self):
@@ -249,7 +260,7 @@ class InstallShimTest(unittest.TestCase):
         exec(compile(src, path, "exec"), ns)
         ctx = SkillCtx()
         ns["register"](ctx)
-        self.assertEqual([s[0] for s in ctx.skills], ["dispatch"])
+        self.assertEqual([s[0] for s in ctx.skills], ["dispatch", "hierarchy"])
         self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")
 
     def test_the_shim_registers_ace_under_its_own_name_where_the_profile_selects_it(self):

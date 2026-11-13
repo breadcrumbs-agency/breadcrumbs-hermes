@@ -114,6 +114,11 @@ DIALS = (
          "file. It then imports the CAR into the profile's own store as private crumbs. When the result of "
          "delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: "
          "nothing is read, nothing is written and no result changes."),
+    Dial("update_ms", 2000, "int", 200, 60000, "Viewer", "BREADCRUMBS_UPDATE_MS",
+         "The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the "
+         "map, the context and the trail; the measures poll at three times it. Read from the top level of config.json "
+         "and from the environment (breadcrumbs/tuning.py; a test keeps them equal). A value of a 'models' entry "
+         "is not used here."),
 )
 BY_KEY = {d.key: d for d in DIALS}
 
