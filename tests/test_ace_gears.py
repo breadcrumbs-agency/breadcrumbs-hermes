@@ -3,7 +3,6 @@
 The gearbox is a lockup for research and reasoning and a low gear for work (breadcrumbs/ace.py, "The gears"). Each
 dial of it is off by default, and a request is then byte for byte what it was before the gears.
 """
-import collections
 import json
 import os
 import re
@@ -12,9 +11,7 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import ace_core
-from breadcrumbs_hermes import ace
-from breadcrumbs_spacegraph import view
+from breadcrumbs import ace, view
 
 from test_ace import ASK, SYSTEM, call, chat, long_turn, step
 
@@ -603,8 +600,8 @@ class PersistTest(Kit):
 
     def setUp(self):
         super().setUp()
-        small, ace_core.SMALL_TARGET = ace_core.SMALL_TARGET, 0  # the shares of a large target, as LargeShareLayerTest
-        self.addCleanup(setattr, ace_core, "SMALL_TARGET", small)
+        small, ace.SMALL_TARGET = ace.SMALL_TARGET, 0  # the shares of a large target, as LargeShareLayerTest
+        self.addCleanup(setattr, ace, "SMALL_TARGET", small)
 
     def chat(self, turns, mentions=(), tool_lines=90):
         """A chat whose turn 1 holds a porcelain teapot and whose turn 2 holds a tin funnel. The user messages of the
@@ -645,7 +642,7 @@ class PersistTest(Kit):
             "name": "write_file", "arguments": json.dumps({"path": "bellows.py", "content": "porcelain teapot, quartz"})}}]}]
         turns = [[{"role": "user", "content": "old"}], [{"role": "user", "content": "new"}] + calls]
         focus = {"quartz": 1.0, "kettle": 0.5}  # focus words of the new message and of the one before
-        df = collections.Counter({"porcelain": 1, "teapot": 2, "quartz": 3, "write_file": 1, "path": 4, "bellows": 0})
+        df = ace.collections.Counter({"porcelain": 1, "teapot": 2, "quartz": 3, "write_file": 1, "path": 4, "bellows": 0})
         e._tail_focus(focus, df, turns, 1, 0)
         self.assertEqual(focus, {"quartz": 1.0, "kettle": 0.5, "porcelain": 0.5, "teapot": 0.5, "write_file": 0.5, "path": 0.5})
         focus = {}  # a turn before the boundary is folded, and is no tail

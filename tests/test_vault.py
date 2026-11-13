@@ -1,5 +1,4 @@
 """vault: an Obsidian vault from a store (export) and crumbs from a vault (import), with exact bytes."""
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json
@@ -10,10 +9,9 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli, vault
-from breadcrumbs_spacegraph import view
+from breadcrumbs import cli, vault, view
 from breadcrumbs.crumbs import Crumb, get_crumb, put_crumb
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider, _ref_name
+from breadcrumbs.hermes import BreadcrumbsProvider, _ref_name
 from breadcrumbs.history import log
 from breadcrumbs.ingest import leaves
 from breadcrumbs.lines import get_lines, put_text

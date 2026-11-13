@@ -61,7 +61,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = "_breadcrumbs_dashboard"  # a private name for the package beside this file, where breadcrumbs_hermes cannot be imported by its own name
+PACKAGE = "_breadcrumbs_dashboard"  # a private name: never the provider's own "breadcrumbs" (the dev shim purges it)
 STORE_FILES = ("index.db", "refs", "store/blobs.pack", "store/blobs.idx")  # for /stores only
 PROFILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 OWN_PARAMS = ("store",)  # parameters of this plugin, not of breadcrumbs' API
@@ -100,50 +100,36 @@ def hermes_root() -> Path:
 
 
 def package_dir() -> Path:
-    """The breadcrumbs_hermes package of this plugin folder."""
-    return PLUGIN_ROOT / "breadcrumbs_hermes"
+    """The breadcrumbs package of this plugin folder."""
+    return PLUGIN_ROOT / "breadcrumbs"
 
 
-def hermes_package() -> str:
-    """The name under which the modules of the package breadcrumbs_hermes import: its own name where Python finds it
-    (installed, or on PYTHONPATH), else the private name PACKAGE for the package beside this file (relative imports
-    only; its adapter then gives the Hermes ports to the layers under it, once)."""
+def view_module():
+    """breadcrumbs.view, imported under the private name PACKAGE (relative imports only)."""
     with _load_lock:
-        if sys.modules.get(PACKAGE) is not None:
-            return PACKAGE
-        try:
-            importlib.import_module("breadcrumbs_hermes")
-            return "breadcrumbs_hermes"
-        except ModuleNotFoundError as e:
-            if e.name != "breadcrumbs_hermes":
-                raise
+        mod = sys.modules.get(PACKAGE + ".view")
+        if mod is not None:
+            return mod
         where = package_dir()
         spec = importlib.util.spec_from_file_location(PACKAGE, where / "__init__.py",
                                                       submodule_search_locations=[str(where)])
         if spec is None or spec.loader is None:
-            raise RuntimeError("cannot load the breadcrumbs_hermes package at %s" % where)
+            raise RuntimeError("cannot load the breadcrumbs package at %s" % where)
         pkg = importlib.util.module_from_spec(spec)
         sys.modules[PACKAGE] = pkg
         try:
             spec.loader.exec_module(pkg)
-            importlib.import_module(PACKAGE + ".adapter")
-            return PACKAGE
+            return importlib.import_module(PACKAGE + ".view")
         except Exception:
             for name in [n for n in sys.modules if n == PACKAGE or n.startswith(PACKAGE + ".")]:
                 del sys.modules[name]
             raise
 
 
-def view_module():
-    """breadcrumbs_spacegraph.view, by its own name (breadcrumbs-spacegraph is a dependency of this plugin), after the
-    package breadcrumbs_hermes: its ports (the profile, the hide list, the log reader) are there when the View asks."""
-    hermes_package()
-    return importlib.import_module("breadcrumbs_spacegraph.view")
-
-
 def novis_module():
-    """breadcrumbs_hermes/novis.py (the no-vis tags), from the same package as the ports of the View."""
-    return importlib.import_module(hermes_package() + ".novis")
+    """breadcrumbs/novis.py (the no-vis tags), from the same private package as the View."""
+    view_module()
+    return importlib.import_module(PACKAGE + ".novis")
 
 
 def _hide(home: Path):
@@ -305,8 +291,9 @@ LOG_DB = "state.db"
 
 
 def logview_module():
-    """breadcrumbs_hermes/logview.py (standard library only), from the same package as the ports of the View."""
-    return importlib.import_module(hermes_package() + ".logview")
+    """breadcrumbs/logview.py (standard library only), from the same private package as the View."""
+    view_module()
+    return importlib.import_module(PACKAGE + ".logview")
 
 
 def log_db(store: str) -> Path:

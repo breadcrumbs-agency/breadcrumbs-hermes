@@ -9,8 +9,7 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import ace_core
-from breadcrumbs_hermes import ace
+from breadcrumbs import ace
 
 
 def entry(eid, group, size, weight, floor=0.0):
@@ -266,8 +265,8 @@ class LayerTest(unittest.TestCase):
 class LargeShareLayerTest(LayerTest):
     """The layer tests again with the shares of a target over SMALL_TARGET (Hermes's 200k)."""
     def setUp(self):
-        small, ace_core.SMALL_TARGET = ace_core.SMALL_TARGET, 0  # the engine reads it (breadcrumbs/ace_core.py)
-        self.addCleanup(setattr, ace_core, "SMALL_TARGET", small)
+        small, ace.SMALL_TARGET = ace.SMALL_TARGET, 0
+        self.addCleanup(setattr, ace, "SMALL_TARGET", small)
         super().setUp()
 
 class EngineTest(unittest.TestCase):
@@ -817,7 +816,7 @@ class ChildTest(unittest.TestCase):
         self.assertEqual((child.folds, child.layer), (0, ""))
 
     def test_the_same_request_folds_where_the_model_has_the_tool(self):
-        from breadcrumbs_hermes import hermes
+        from breadcrumbs import hermes
         self.assertIn(ace.BLOCK_NAMES_CRUMB, hermes.SYSTEM_BLOCK)  # the line that the guard looks for is the provider's
         req = [SYSTEM] + chat(40)
         self.assertIsNotNone(self.engine("cli").select_context(req, budget_tokens=1_000_000))  # a primary agent
@@ -834,71 +833,6 @@ class ChildTest(unittest.TestCase):
         for kwargs in ({}, {"platform": "tui"}):  # run_agent names the session source, which can be the parent's
             child.on_session_start("s-next", hermes_home=self.tmp.name, boundary_reason="compression", **kwargs)
             self.assertIsNone(child.select_context([SYSTEM] + chat(40), budget_tokens=1_000_000))
-
-
-class JoinTest(unittest.TestCase):
-    """ace.join: an ace.log line and the main request that it shaped (usage.log), for the cache writes beside the acts."""
-    SID = "local-95fe5b51cc28cfa5e4b0c9d8"  # longer than LOG_SESS: ace.log holds its first 24 characters
-
-    def line(self, ts, act="pass", sess=None):
-        return {"sess": (sess or self.SID)[:ace.LOG_SESS], "ts": ts, "act": act}
-
-    def req(self, ts, req, task="main", sess=None):
-        return {"sess": sess or self.SID, "ts": ts, "task": task, "req": req}
-
-    def test_a_line_joins_by_the_prefix_of_the_session_id(self):
-        self.assertEqual(len(self.line(0)["sess"]), 24)
-        reqs = [self.req(5, "r1"), self.req(3, "o1", sess="local-95fe5b51cc28cfa5e5b0c9d8")]  # differs at character 24
-        got = ace.join([self.line(0)], reqs)
-        self.assertEqual([r["req"] for _, r in got], ["r1"], "the whole id of the request starts with the line's 24 characters")
-        self.assertEqual([r["req"] for _, r in ace.join([{"sess": self.SID, "ts": 0, "act": "pass"}], reqs)], ["r1"],
-                         "a whole id in a line: the same")
-        self.assertEqual(ace.join([self.line(0, sess="local-1111")], reqs), [], "a session with no request")
-        self.assertEqual(ace.join([{"sess": "-", "ts": 0, "act": "pass"}], [self.req(1, "d", sess="-")]), [],
-                         "a line with no session id joins nothing")
-
-    def test_the_first_main_request_at_or_after_the_line_within_120_seconds(self):
-        reqs = [self.req(95, "before"), self.req(100, "same"), self.req(150, "later"),
-                self.req(301, "aux", task="compression"), self.req(320, "at120"), self.req(500, "late")]
-        lines = [self.line(100, "fold"), self.line(101, "keep"), self.line(200, "pass"), self.line(379, "ratchet")]
-        got = [(l["act"], r["req"]) for l, r in ace.join(lines, reqs)]
-        self.assertEqual(got, [("fold", "same"), ("keep", "later"), ("pass", "at120")],
-                         "at the same second; the next one; a helper call is no request of the chat; 121 s is too late")
-        self.assertEqual(ace.join([self.line(379, "ratchet")], reqs), [], "a line with no request in the window")
-        self.assertEqual(ace.join(lines, []), [])
-
-    def test_requests_of_one_second_are_ordered_by_id_and_the_order_given_does_not_matter(self):
-        reqs = [self.req(10, "b"), self.req(10, "a"), self.req(4, "z")]
-        self.assertEqual([r["req"] for _, r in ace.join([self.line(5)], reqs)], ["a"])
-        self.assertEqual([r["req"] for _, r in ace.join([self.line(5)], reqs[::-1])], ["a"])
-
-    def test_the_hermes_layer_gives_the_join_as_a_port(self):
-        from breadcrumbs import ports
-        self.assertEqual(ports.get("ace_join")([self.line(0)], [self.req(1, "r")])[0][1]["req"], "r")
-
-    def end(self, ts, dur, req, prompt):
-        """A main request as usage.log has it: stamped at its end, dur seconds after its start."""
-        return {**self.req(ts, req), "dur": dur, "prompt": prompt}
-
-    def test_a_line_in_the_second_that_a_request_ended_joins_the_request_after_it(self):
-        # R ends at 100 (started 95); the tool loop starts the next request at once, in the same second, and ACE writes
-        # its line then: stamp 100, last= R's prompt. The next request ends at 108 (start 100.4).
-        reqs = [self.end(100, 5.2, "R", 1000), self.end(108, 7.6, "next", 1200)]
-        late = {**self.line(100, "fold"), "count": 1000}
-        self.assertEqual([r["req"] for _, r in ace.join([late], reqs)], ["next"], "the request it shaped, not R")
-
-    def test_a_line_before_the_first_request_joins_it_and_a_line_after_the_last_joins_nothing(self):
-        reqs = [self.end(70, 10.0, "first", 900), self.end(80, 4.0, "second", 950)]
-        self.assertEqual([r["req"] for _, r in ace.join([self.line(55)], reqs)], ["first"], "start 60, 5 s after the line")
-        self.assertEqual(ace.join([self.line(81)], reqs), [], "no request starts after the last one")
-        self.assertEqual(ace.join([self.line(-61)], reqs), [], "start 60: 121 s after the line, out of the window")
-        self.assertEqual([r["req"] for _, r in ace.join([self.line(-60)], reqs)], ["first"], "120 s: in the window")
-
-    def test_the_tolerance_is_one_tick_of_the_stamps(self):
-        # both stamps are cut to whole seconds: a start up to 1 s before the line's stamp can be after the line
-        for dur, want in ((11.0, "next"), (10.99, "R"), (10.5, "R")):
-            reqs = [self.end(110, dur, "R", 1000), self.end(120, 5.0, "next", 1100)]
-            self.assertEqual([r["req"] for _, r in ace.join([self.line(100)], reqs)], [want], "start %.2f" % (110 - dur))
 
 
 if __name__ == "__main__":

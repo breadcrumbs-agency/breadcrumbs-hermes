@@ -4,7 +4,6 @@ One small scenario with fixed times. The view contract fixture (tests/fixtures/v
 holds the View output for it; SpaceGraph's suite asserts the same file. To write it again after an
 intended change: BREADCRUMBS_WRITE_FIXTURE=1 python -m unittest tests.test_context
 """
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import tempfile
@@ -12,9 +11,9 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs_spacegraph import view
+from breadcrumbs import view
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+from breadcrumbs.hermes import BreadcrumbsProvider
 from breadcrumbs.ingest import leaves
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "view-contract.json")
@@ -137,7 +136,7 @@ class ReceiptTest(Scenario):
         self.assertEqual(rows, 0)
 
     def test_a_failed_receipt_write_does_not_fail_the_tool(self):
-        from breadcrumbs_hermes import hermes
+        from breadcrumbs import hermes
         def full(*a, **k):
             raise OSError("no space left on device")
         hermes.put_crumb, keep = full, hermes.put_crumb

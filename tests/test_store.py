@@ -1,4 +1,3 @@
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json
@@ -451,7 +450,7 @@ class StatsTest(unittest.TestCase):
             self.assertEqual(self.run_cli("--home", home, "verify")["blobs"], 1)
 
     def test_the_cli_finds_a_stored_turn_under_its_session_handle(self):
-        from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+        from breadcrumbs.hermes import BreadcrumbsProvider
         with tempfile.TemporaryDirectory() as hermes_home:
             p = BreadcrumbsProvider()
             p.initialize("s1", hermes_home=hermes_home, platform="cli", agent_context="primary")

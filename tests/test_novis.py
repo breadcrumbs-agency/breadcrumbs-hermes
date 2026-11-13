@@ -6,8 +6,6 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-import threading
-import time
 import types
 import unittest
 from pathlib import Path
@@ -17,10 +15,8 @@ os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # the scenario never starts
 os.environ.setdefault("SPACEGRAPH_NO_WARM", "1")  # loading the router must not warm a real store
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from breadcrumbs import cli
-from breadcrumbs_hermes import novis, workdir
-from breadcrumbs import viz  # noqa: E402
-from breadcrumbs_spacegraph.view import View  # noqa: E402
+from breadcrumbs import cli, island, novis, viz  # noqa: E402
+from breadcrumbs.view import View  # noqa: E402
 from test_context import scenario  # noqa: E402
 from test_dashboard import FASTAPI, PREFIX, plugin_client  # noqa: E402
 
@@ -109,77 +105,37 @@ class Command(Root):
                          ("default", None))
 
 
-class Writer(Root):
-    """change(): the one writer of the tags, for the command, a tool and a menu."""
-
-    def test_change_adds_and_removes_and_returns_the_tags(self):
-        self.assertEqual(novis.change("add", ["alpha", "s-old", "s-old"], self.root),
-                         {"profiles": ["alpha"], "sessions": ["s-old"]})
-        self.assertEqual(novis.change("add", ["s-old"], self.root)["sessions"], ["s-old"])  # again: no change, no error
-        self.assertEqual(novis.change("rm", ["alpha"], self.root), {"profiles": [], "sessions": ["s-old"]})
-        with self.assertRaises(ValueError):
-            novis.change("list", [], self.root)
-
-    def test_a_refused_change_writes_nothing_and_names_what_it_could_not_take(self):
-        with self.assertRaises(novis.Refused) as e:
-            novis.change("add", ["s-new", "nobody"], self.root)
-        self.assertEqual((e.exception.names, str(e.exception)), (["nobody"], "no profile or session nobody"))
-        self.assertFalse(os.path.exists(novis.path(self.root)))
-        novis.change("add", ["s-new"], self.root)
-        with self.assertRaises(novis.Refused) as e:
-            novis.change("rm", ["s-new", "s-old"], self.root)
-        self.assertEqual(e.exception.names, ["s-old"])
-        self.assertEqual(novis.load(self.root)["sessions"], ["s-new"])
-
-    @unittest.skipIf(novis.fcntl is None, "no flock on this platform")
-    def test_writers_at_the_same_time_lose_no_tag(self):
-        """Each writer reads, waits, then writes. Without the lock every writer would read the empty file, and the
-        last write would keep one tag."""
-        names = ["s-default", "s-old", "s-new", "imported", "alpha", "default"]
-        real, errors = novis.save, []
-
-        def slow(tags, hermes=None):
-            time.sleep(0.05)
-            real(tags, hermes)
-
-        def write(name):
-            try:
-                novis.change("add", [name], self.root)
-            except Exception as e:  # noqa: BLE001 - the assert below reports it
-                errors.append(e)
-
-        with mock.patch.object(novis, "save", slow):
-            threads = [threading.Thread(target=write, args=(n,)) for n in names]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join(30)
-        self.assertEqual(errors, [])
-        self.assertEqual(novis.load(self.root), {"profiles": ["alpha", "default"],
-                                                 "sessions": ["imported", "s-default", "s-new", "s-old"]})
-
-
 class Chats(Root):
-    """A chat of a tagged profile or session: /viz opens nothing."""
+    """A chat of a tagged profile or session: no explorer at start, no NOTE, and /viz opens nothing."""
 
     def setUp(self):
         super().setUp()
         self.run_("add", "alpha", "s-new")
 
-    def test_viz_opens_nothing_for_a_tagged_profile_or_chat(self):
+    def test_no_explorer_and_no_note(self):
+        with mock.patch.object(island, "_viz_started", False), \
+                mock.patch.object(island.threading, "Thread") as thread, \
+                mock.patch.object(island, "launch_root", return_value=None):
+            island.Tracker(hermes=self.root, profile_home=self.alpha).on_session_start("s-free", platform="cli")
+            island.Tracker(hermes=self.root, profile_home=self.root).on_session_start("s-new", platform="cli")
+            self.assertEqual(thread.call_count, 0)
+            island.Tracker(hermes=self.root, profile_home=self.root).on_session_start("s-free", platform="cli")
+            self.assertEqual(thread.call_count, 1)  # an untagged chat of an untagged profile
         with mock.patch.object(viz, "run") as run:
-            with mock.patch.object(workdir, "current_home", return_value=self.alpha):
-                self.assertEqual(workdir.open_viz(os.path.join(self.alpha, "breadcrumbs"), hermes=self.root),
-                                 "breadcrumbs: the explorer did not open: profile `alpha` opted out of visualization (no-vis).")
-            with mock.patch.object(workdir, "current_home", return_value=self.root):
-                self.assertIn("this chat opted out", workdir.open_viz(os.path.join(self.root, "breadcrumbs"),
-                                                                      session_id="s-new", hermes=self.root))
+            self.assertEqual(island.open_viz(self.alpha, hermes=self.root), "breadcrumbs: the explorer did not open: "
+                             "profile `alpha` opted out of visualization (no-vis).")
+            self.assertIn("this chat opted out", island.open_viz(self.root, hermes=self.root, session_id="s-new"))
         run.assert_not_called()
+        with mock.patch.object(island, "own_root", return_value="/w/a"), \
+                mock.patch.object(island, "launch_root", return_value="/w/a"):  # launched inside the island
+            t = island.Tracker(hermes=self.root, profile_home=self.root)
+            self.assertIsNone(t.transform_llm_output("hi", session_id="s-new"))
+            self.assertIn("[!NOTE]", t.transform_llm_output("hi", session_id="s-free") or "")
 
     def test_the_commands_that_draw_refuse_a_tagged_profile_and_the_private_command_is_not_in_help(self):
         err, out = io.StringIO(), io.StringIO()
-        with mock.patch.object(workdir, "hermes_root", return_value=self.root), \
-                mock.patch("breadcrumbs_spacegraph.view.make_server") as make, contextlib.redirect_stderr(err):
+        with mock.patch.object(island, "hermes_root", return_value=self.root), \
+                mock.patch("breadcrumbs.view.make_server") as make, contextlib.redirect_stderr(err):
             self.assertEqual(cli.main(["--home", os.path.join(self.alpha, "breadcrumbs"), "serve"]), 1)
         make.assert_not_called()
         self.assertIn("profile `alpha` opted out of visualization", err.getvalue())
@@ -187,7 +143,7 @@ class Chats(Root):
             cli.main(["help"])
         self.assertNotIn("no-vis", out.getvalue())
         out = io.StringIO()
-        with mock.patch.object(workdir, "hermes_root", return_value=self.root), contextlib.redirect_stdout(out):
+        with mock.patch.object(island, "hermes_root", return_value=self.root), contextlib.redirect_stdout(out):
             self.assertEqual(cli.main(["no-vis"]), 0)
         self.assertIn("[x] profile  alpha", out.getvalue())
 

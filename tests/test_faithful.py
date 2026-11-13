@@ -1,5 +1,4 @@
 """bench/faithful.py: the census of the catalog's memory plugins reads hooks and floors with ast only."""
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import importlib.util
 import os
 import tempfile

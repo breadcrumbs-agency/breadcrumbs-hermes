@@ -14,7 +14,6 @@ import importlib.util
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -39,7 +38,7 @@ CALLS = {
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
-from breadcrumbs_spacegraph import view  # noqa: E402
+from breadcrumbs import view  # noqa: E402
 from test_context import scenario as SCENARIO  # noqa: E402
 
 try:
@@ -214,30 +213,14 @@ class Routes(Contract):
         listed = self.ok("/stores")["stores"]
         self.assertEqual([(s["store"], s["sessions"], s["active"]) for s in listed], [("demo", 4, True)])
 
-    def test_the_modules_come_from_the_packages_by_their_own_names(self):
+    def test_the_package_is_this_folder_under_a_private_name(self):
         mod = self.api.view_module()
-        self.assertEqual(mod.__name__, "breadcrumbs_spacegraph.view")  # breadcrumbs-spacegraph is a dependency
-        self.assertIs(mod, view)
-        self.assertEqual(self.api.logview_module().__name__, "breadcrumbs_hermes.logview")
-        self.assertEqual(Path(self.api.logview_module().__file__).resolve(), (ROOT / "breadcrumbs_hermes" / "logview.py").resolve())
+        self.assertEqual(mod.__name__, "_breadcrumbs_dashboard.view")  # never the provider's own "breadcrumbs"
+        self.assertIsNot(mod, view)
+        self.assertEqual(Path(mod.__file__).resolve(), (ROOT / "breadcrumbs" / "view.py").resolve())
+        self.assertEqual(self.api.logview_module().__name__, "_breadcrumbs_dashboard.logview")
         health = self.ok("/health")
-        self.assertEqual((health["error"], Path(health["package"])), (None, ROOT / "breadcrumbs_hermes"))
-
-    def test_the_package_beside_the_plugin_loads_under_a_private_name_when_it_is_not_on_the_path(self):
-        # Hermes installs the dependencies (breadcrumbs, breadcrumbs_spacegraph) but runs the plugin from its own folder:
-        # breadcrumbs_hermes is not on the path there. A child Python with the two lower folders only shows that case.
-        code = ("import importlib.util, sys; spec = importlib.util.spec_from_file_location('plugin_api', %r); "
-                "api = importlib.util.module_from_spec(spec); sys.modules['plugin_api'] = api; spec.loader.exec_module(api); "
-                "v = api.view_module(); l = api.logview_module(); from breadcrumbs import ports; "
-                "print(v.__name__, l.__name__, sorted(ports.harnesses()), 'blocked' in ports._given, "
-                "'breadcrumbs_hermes' in sys.modules)" % str(ROOT / "dashboard" / "plugin_api.py"))
-        lower = os.pathsep.join(p for p in sys.path if os.path.isdir(os.path.join(p, "breadcrumbs")) or
-                                os.path.isdir(os.path.join(p, "breadcrumbs_spacegraph")))
-        done = subprocess.run([sys.executable, "-W", "ignore", "-c", code], capture_output=True, text=True,
-                              env=dict(os.environ, PYTHONPATH=lower), cwd=tempfile.gettempdir())
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout.split(), ["breadcrumbs_spacegraph.view", "_breadcrumbs_dashboard.logview",
-                                               "['hermes']", "True", "False"])
+        self.assertEqual((health["error"], Path(health["package"])), (None, ROOT / "breadcrumbs"))
 
     def test_the_other_routes_answer(self):
         rows = self.fixture["context"]["rows"]

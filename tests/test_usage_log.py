@@ -8,7 +8,7 @@ import types
 import unittest
 from unittest import mock
 
-from breadcrumbs_hermes import usage_log
+from breadcrumbs import usage_log
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REAL_STAMP = usage_log._stamp  # setUp replaces it with a fixed stamp
@@ -330,7 +330,7 @@ class UsageLogTest(unittest.TestCase):
             def get(self, *a, **k):
                 raise RuntimeError(SECRET)
 
-        with self.assertLogs("breadcrumbs_hermes.usage_log", level="DEBUG") as logs:
+        with self.assertLogs("breadcrumbs.usage_log", level="DEBUG") as logs:
             self.assertIsNone(self.api(**api_kw(usage=Boom())))
         text = "\n".join(logs.output)
         self.assertIn("RuntimeError", text)
@@ -358,7 +358,7 @@ class UsageLogTest(unittest.TestCase):
                 self.assertRegex(text, LINE)  # a line is never split between the two files
 
     def test_log_bytes_is_one_mebibyte_as_in_ace_log(self):
-        from breadcrumbs_hermes import ace
+        from breadcrumbs import ace
         self.assertEqual(usage_log.LOG_BYTES, 1 << 20)
         self.assertEqual(usage_log.LOG_BYTES, ace.LOG_BYTES)
 
@@ -460,11 +460,12 @@ class UsageLogTest(unittest.TestCase):
             [declared] = [line.partition(":")[2] for line in f if line.startswith("provides_hooks:")]
         self.assertLessEqual(set(usage_log.HOOKS), {h.strip() for h in declared.strip().strip("[]").split(",")})
 
-    def test_the_root_registration_reaches_the_file_before_the_hook_of_the_family(self):
-        from breadcrumbs_hermes import hermes
+    def test_the_root_registration_reaches_the_file_right_after_the_islands(self):
+        from breadcrumbs import hermes
         ctx = Ctx()
-        hermes.register_plugin(ctx, mock.Mock())  # the dials register middleware, not a hook
-        self.assertEqual(list(ctx.hooks)[-3:-1], ["post_api_request", "post_auxiliary_call"])  # then the hook of the family
+        hermes.register_plugin(ctx, mock.Mock())  # the merged tree has no rebind of Hermes core to keep out (intercept, dials.install)
+        self.assertEqual(list(ctx.hooks)[-6:-1], ["on_session_start", "post_tool_call", "transform_llm_output",
+                                                  "post_api_request", "post_auxiliary_call"])  # then the hook of the family
         ctx.hooks["post_api_request"](**api_kw())
         ctx.hooks["post_auxiliary_call"](**aux_kw())
         self.assertEqual(self.lines(), [API_LINE, AUX_LINE])

@@ -1,8 +1,4 @@
-> The films, pictures and the site of the hackathon entry are not in this repository (the plugin is 14 files; the
-> media was 73 MB). They stay in [hermes-breadcrumb-plugin](https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin)
-> at the commit that the links below name.
-
-![breadcrumbs: every memory has an address](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/hero.png)
+![breadcrumbs: every memory has an address](doc/img/hero.png)
 
 
 Concepts here: [ /hermes-breadcrumb-plugin](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/)
@@ -28,7 +24,7 @@ exact text. A higher level never removes a word.
 
 `[EVENT] crumb_find → crumb("ffbd6e15", 1) → THE ANSWER NAMES ITS SOURCE`
 
-![A Hermes chat: the model calls crumb_find, then crumb, and names its source](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-chat.gif)
+![A Hermes chat: the model calls crumb_find, then crumb, and names its source](docs/media/run-chat.gif)
 
 A real Hermes chat on the demo memory. The model recalls 6 memories, calls `crumb_find`, calls `crumb` at level 1,
 and gives the exact words with their source: crumb `ffbd6e15`. Nobody wrote its words.
@@ -37,7 +33,7 @@ and gives the exact words with their source: crumb `ffbd6e15`. Nobody wrote its 
 
 `[ZOOM] MAP → SESSION → CARD → LEVEL 0.5: EACH WORD THAT STAYS KEEPS ITS PLACE`
 
-![The explorer goes from the map of sessions to one card, and the card changes its level](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-explorer.gif)
+![The explorer goes from the map of sessions to one card, and the card changes its level](docs/media/run-explorer.gif)
 
 The plugin's own page for Hermes Desktop, on the demo store: the map of all sessions, then one session, then one
 card. The card goes from level 1 to level 0.5, and each word that stays keeps its place.
@@ -46,7 +42,7 @@ card. The card goes from level 1 to level 0.5, and each word that stays keeps it
 
 `[ACE] TARGET 80K HELD · THE LAYER DOES NOT CHANGE BETWEEN FOLDS · THE PROMPT CACHE HOLDS`
 
-![The Size panel: the request climbs to its target and folds 18 times](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-window.gif)
+![The Size panel: the request climbs to its target and folds 18 times](docs/media/run-window.gif)
 
 The Size panel of a real chat of 118 requests. The chat holds 270k tokens. The request that goes out is 78k, under
 its target of 80k. Each red dot is a fold, and no model writes a fold. Between folds the layer does not change, so
@@ -56,7 +52,7 @@ the prompt cache holds.
 
 `[HIVE] 16 AT ONE TIME · ABOUT 1,900 REQUESTS · ABOUT 100 FOLDS · 91.5% OF THE INPUT FROM THE CACHE`
 
-![38 Hermes sessions on their real clock, with a dot for each fold](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-takedown.gif)
+![38 Hermes sessions on their real clock, with a dot for each fold](docs/media/run-takedown.gif)
 
 This entry was built this way. Each bar is one Hermes session (Sonnet 5.5) on its real clock, 16 at one time. Each
 dot is a fold of that session's context. In all: about 1,900 model requests, about 100 folds, and 91.5% of the
@@ -66,7 +62,7 @@ input tokens from the cache. The numbers come from the session table and the ACE
 
 `[IPFS] CHILD → CAR → CID → IMPORT · THE SAME ROOT ID IN BOTH STORES · VERIFY: 0 BAD`
 
-![The terminal of the run: each child's session becomes a CAR file with a CID, and the parent imports it](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-family.gif)
+![The terminal of the run: each child's session becomes a CAR file with a CID, and the parent imports it](docs/media/run-family.gif)
 
 A lead agent and five child agents on the demo profile. The session of each child leaves as one CAR file with a
 CID. The parent imports it and holds the same root id, and `verify` finds 0 bad blocks. The lead's answer cites an
@@ -76,25 +72,21 @@ id from each of the five.
 
 `[SYNC] CLAUDE CODE · OPENCODE · HERMES → LINE 12 = 1721f9ac IN EVERY STORE · 0.110 ms OF LOCKS IN ALL`
 
-![Three panes: Claude Code, OpenCode and Hermes hold the same line id](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-panes.gif)
+![Three panes: Claude Code, OpenCode and Hermes hold the same line id](docs/media/run-panes.gif)
 
 Claude Code, OpenCode and Hermes read one file, each with its own tool, each into its own store. Line 12 has the id
 `1721f9ac` in all three stores, and no pane waited for a lock: 0.110 ms in total. The adapters for the two other
 programs are not in this release.
 
-## ONE MEMORY FOR EACH GIT REPOSITORY OR FOLDER, NO PROFILES!
+## ONE CODEBASE, ONE MEMORY: THE ISLANDS ARE AUTOMATIC!
 
-`[PROJECT] THE FOLDER OF THE CHAT → ITS GIT REPOSITORY, OR THE FOLDER ITSELF → ITS OWN MEMORY · /scope SHOWS IT · /viz OPENS IT`
+`[ISLAND] ANOTHER CODEBASE IN THE CHAT → A RED OFFER IN THE NEXT REPLY · /island GIVES IT ITS OWN PROFILE · /viz OPENS ITS MEMORY`
 
-A chat's memory is chosen by where the chat works, not by which Hermes profile runs it. breadcrumbs reads the folder
-of the chat, takes its git repository (a linked worktree or a submodule counts as its main repository), a folder
-that holds a `.breadcrumbs` file or folder, or else a source tree, or else the folder itself, and opens the store of
-that project. Where nothing says otherwise, the project is the git repository or the current directory. A chat in
-another repository has another memory, so recall in one codebase never brings back a crumb of another. Scopes nest
-(a monorepo that holds repositories): automatic recall stays in the nearest scope, and `crumb_find` takes `scope`
-`"up"` (the scopes above, then the default memory) or `"all"` to read further. A chat in the home folder uses the
-default memory of the profile, as does a place with a `.breadcrumbs` file that says `off`. Nothing creates, clones or
-switches a Hermes profile.
+A Hermes profile is an island with one memory. breadcrumbs finds the codebase of each tool call. When a chat works
+in a codebase that is not the island of its profile, the next reply ends with a red offer, and one command,
+`/island PATH`, gives that codebase its own profile and its own memory. When a profile already holds that codebase,
+the offer names it: `hermes -p NAME`. A chat that starts inside its island gets a note, and `/viz` opens the explorer
+of that memory from the chat. The offer changes nothing by itself.
 
 ## ALL OF LOCOMO IN 0.17 SECONDS!
 
@@ -112,7 +104,7 @@ switches a Hermes profile.
 Bold is the best of the five systems. The floor is plain SQLite FTS5 with no stemmer: it is faster and smaller,
 and it finds less. The full rows, with the install column, are in "What is measured" below.
 
-[![To Scale: each bar at its true ratio. Click for the full film with sound.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/to-scale.gif)](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/film/to-scale.mp4)
+[![To Scale: each bar at its true ratio. Click for the full film with sound.](docs/media/to-scale.gif)](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/film/to-scale.mp4)
 
 **To Scale** (65 seconds). The picture plays 12 seconds of it: click it for the full film with sound. Each bar is on
 one linear axis with zero at the left, at its true ratio. Benchmark scores are a demonstration. They are
@@ -120,41 +112,41 @@ preliminary, and they vary during the hackathon.
 
 ## MORE FILMS!
 
-<a href="https://www.youtube.com/watch?v=a05N4Ju2-DM"><img src="https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/one-tool-two-parts.jpg" width="440" alt="One Tool, Two Parts"></a>
+<a href="https://www.youtube.com/watch?v=a05N4Ju2-DM"><img src="docs/media/one-tool-two-parts.jpg" width="440" alt="One Tool, Two Parts"></a>
 
 **One Tool, Two Parts**: `crumb_find` and `crumb`, live on a demo memory.
 [The First Explorer](https://www.youtube.com/watch?v=D3Mdd_eLjn8) is the earliest film of the explorer.
 
 ## LOOK CLOSER!
 
-![What the model saw in one session, turn by turn](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/context.png)
+![What the model saw in one session, turn by turn](doc/img/context.png)
 
 1. Each bar is one copy of a crumb in the model's context, from the event that added it to the next compress. Blue is recall, teal is find, amber is open, grey is the session's own turns. A paler bar is a lower level.
 2. The red dashed line is a compress event (event 5, the sixth dot). The context was compacted, so each copy that was open ends there.
 3. The dashed ring is a cut. In turn 4, event 11 (the last dot) wanted 741 B of text. The turn budget (1,124 B) cut it to 243 B.
 4. The Venn shows the context at event 4 (the fifth dot). The area of a set is its bytes: found 1,316 B, recalled 1,046 B, opened 997 B. Found and recalled share 6 crumbs.
 
-![9 sessions on one map. A line joins two that share a cue word.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/map.png)
+![9 sessions on one map. A line joins two that share a cue word.](doc/img/map.png)
 
 1. Each card is one session: its name, its address (a crumb id) and its size in tokens.
 2. A dashed teal line joins two sessions that share a cue word. The word is the label: derailleur, oolong.
 3. The yellow halo marks the session in focus. Here it is today, the one live session; the other eight are past sessions.
 
-![bc d98e0bf6 at level 0, 0.5 and 1. The words that stay do not move.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/zoom.png)
+![bc d98e0bf6 at level 0, 0.5 and 1. The words that stay do not move.](doc/img/zoom.png)
 
 1. Level 0 is a handle: one line with the id, the kind, the first words of the text and its size, 31 tokens.
 2. Level 0.5 shows the most distinct words. Each … is a gap, and each word keeps the place that it has at level 1.
 3. Level 1 is the exact bytes of the text. Each word of level 0.5 is here, in the same place.
 
-![One hard task. 38 agents. 110 minutes.](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/img/takedown.png)
+![One hard task. 38 agents. 110 minutes.](doc/img/takedown.png)
 
 1. Each bar is one Hermes session (Sonnet 5.5) that worked on this entry on the evening of Nov 10 2026, on its real clock.
 2. Each dot is one fold of that session's context by the breadcrumbs context engine. No model call makes a fold.
 3. The numbers come from the session table and the ACE log of the build profile: numbers only, no text of a chat.
 
-![The explorer goes from all sessions to one line](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/loop-dive.gif)
+![The explorer goes from all sessions to one line](docs/media/loop-dive.gif)
 
-![One crumb changes its level](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/loop-zoom.gif)
+![One crumb changes its level](docs/media/loop-zoom.gif)
 
 ## Five facts, and what follows from each
 
@@ -178,7 +170,7 @@ python3 -m breadcrumbs --home /tmp/bc-demo/breadcrumbs verify                   
 python3 -m breadcrumbs --home /tmp/bc-demo/breadcrumbs serve --open             # the explorer, read-only
 ```
 
-[doc/DEMO.md](https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin/blob/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/doc/DEMO.md) tells what the explorer shows. To see your own Hermes sessions, install the plugin
+[doc/DEMO.md](doc/DEMO.md) tells what the explorer shows. To see your own Hermes sessions, install the plugin
 (the next section) and backfill a profile. The backfill reads `state.db` read-only.
 
 ```sh
@@ -188,15 +180,9 @@ python3 -m breadcrumbs --home ~/.hermes/breadcrumbs ingest-hermes default       
 ## Install
 
 ```sh
-# the `release` branch is the plugin: this part with breadcrumbs-common and breadcrumbs-spacegraph under lib/
-hermes plugins install breadcrumbs-agency/breadcrumbs-hermes \
-  --ref "$(git ls-remote https://github.com/breadcrumbs-agency/breadcrumbs-hermes refs/heads/release | cut -f1)"
+hermes plugins install breadcrumbs-agency/hermes-breadcrumb-plugin   # the repository is the plugin
 hermes config set memory.provider breadcrumbs       # undo: hermes memory off
 ```
-
-`master` is the source of this part and does not run alone (it needs its two layers); `release` is built from the
-parts by `breadcrumbs/tools/bundle.py` (`BUNDLE.json` names the commits). Hermes installs one exact commit, so
-`--ref` takes the 40-character commit of `release`.
 
 The plugin declares one dependency, `google-crc32c`, so the install asks one dependency question, and
 Hermes installs the package into its environment. The CRC32C then uses the CPU instruction. In a Python
@@ -210,13 +196,11 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
   to 5% of turns. The tools `crumb` and `crumb_find`. A receipt for each read. Tool calls and their results
   become linked `step` and `tool` crumbs.
 - **A context engine** (ACE): `hermes config set context.engine breadcrumbs`.
-- **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
-  hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
-- **`/viz`**: a slash command that opens the explorer of the memory of the chat's scope, with no command line.
-  Hermes's entry in the harness table carries the breadcrumbs mark as its icon (`icon.png`). The explorer does not draw the icon yet
-  (the brand bar has no harness picture); `BREADCRUMBS_HARNESS=<name>` names the
-  program for a view that was not opened by one.
+- **`/island`**: one codebase for each profile, so that two codebases do not dilute one memory. It is a slash
+  command and three hooks. The dial `family` adds a fourth hook, `transform_tool_result` (see the handbook below).
+- **`/viz`**: a slash command that opens the explorer of the profile's memory from a chat, with no command line.
 - **One core for every harness** (`breadcrumbs/core.py`): six read-only verbs (`find`, `open`, `zoom`, `trail`, `stores`, `health`) over all stores at once (`~/.hermes`, each profile, and `--home` as `local`), held open in one process. Three thin servers carry the same table: `python -m breadcrumbs core mcp` (MCP over stdio), `core sock` (a Unix socket, mode 0600; `--tcp PORT` adds loopback TCP that wants `core.token`) and `core a2a` (A2A 0.3 on 127.0.0.1 with a bearer token). A client names itself (MCP `clientInfo`, the A2A `User-Agent` or `X-Harness`, the `harness` field of a socket request); the core tells Hermes, Claude Code, Codex and OpenCode apart, counts their calls in `health`, and `core setup [HARNESS]` prints the command that adds the MCP server to each one.
+- **Explorer at start**: a CLI or TUI chat opens the explorer once per process. In cmux it is a browser split; in tmux it is a pane that runs `term` (that needs a terminal that reads the Kitty graphics protocol); in a bare console the OS opens the page. `BREADCRUMBS_VIZ=0` turns it off.
 - **The explorer.** It opens a session as a document: turn frames, phase bands, tool and file cards. It draws
   the receipts as a Gantt chart (crumbs by turns; each bar holds the text that the model saw) and a Venn of
   recalled, found and opened crumbs (one frame of crumb texts for each region). It runs in a browser (`serve`),
@@ -376,10 +360,8 @@ model entry or the environment), names a value that is not valid, and names a ke
 `"models"` maps a glob of the model name to dials: no one set is best for each model, because a model
 at maximum reasoning writes more thinking, and the thinking that goes back with each message counts in each
 request. The last value that sets a dial wins; the environment variable of a dial wins over the file. A
-`"models"` entry may also hold request options (`temperature`, `top_p`, ...). Hermes's public `llm_request`
-middleware puts them into each OpenAI chat-completions request of a chat (not into its helper calls), for a
-provider that you call with an API key; the Anthropic wire and a provider that logs in with OAuth keep the request
-that Hermes builds.
+`"models"` entry may also hold request options (`temperature`, `top_p`, ...). This release does not send them,
+because it replaces no code of Hermes; the file keeps them, and `dials` names them.
 
 ```json
 {"ace_tokens": 200000, "models": {"*nemotron*": {"ace_tokens": 290000, "ace_fold_to": 0.9}}}
@@ -408,6 +390,7 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `ace_turn_fold` | false | true or false |  | In low gear the first request of each user turn folds again when the chat has a layer, so the layer follows the task. The layer then holds inside the turn, and the prompt cache holds. Needs ace_lockup. |
 | `ace_persist` | 0 | 0 or more |  | The words of the tool calls in the kept turns count as focus words at half weight in the layer, and an old crumb whose rare words come back in later groups of turns gets its weight times 1 plus this number for each of those groups (at most 4). 0: off. |
 | `ace_diverse` | 4 | 0 or more |  | An interval in which the tool calls write, or use this many different tools, is work and not reading: the raised target tapers back. 0: only a write counts. |
+| `intercept` | false | true or false |  | ACE takes Hermes's built-in compressor in this profile. It changes the compressor of the profile through private core imports, so it is off unless true. A profile with context.engine: breadcrumbs does not need it. |
 | `prefetch_tokens` | 300 | 1 or more | `BREADCRUMBS_PREFETCH_TOKENS` | The first budget of the recall text in each turn, in tokens. The controller then adapts it, between budget_min and budget_max (it is saved in horizon.json). |
 | `recall_share` | 0.15 | 0 to 1 | `BREADCRUMBS_RECALL_SHARE` | A turn overflows when the recall text is more than this share of the context. |
 | `neighbor` | 0.3 | 0 to 1 | `BREADCRUMBS_NEIGHBOR` | The weight of dialogue-neighbor smoothing in search: a turn next to a strong hit gets this share of the hit's score. 0: off. |
@@ -419,7 +402,6 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `overflow_low` | 0.02 | 0 to 1 |  | The controller raises the budget when fewer turns than this share overflow. |
 | `overflow_high` | 0.05 | 0 to 1 |  | The controller lowers the budget when more turns than this share overflow. |
 | `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only), writes them to the child's own store (the folder children/ID of the breadcrumbs folder), and exports them there as a CAR file. It then imports the CAR into the profile's own store as private crumbs. When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
-| `update_ms` | 2,000 | 200 to 60000 | `BREADCRUMBS_UPDATE_MS` | The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the map, the context and the trail; the measures poll at three times it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
 
 | Environment knob | Default | What it does |
 |---|---|---|
@@ -435,6 +417,17 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `BREADCRUMBS_GRAAL_HEAP` | 4g | The heap of a GraalPy run. |
 | `BREADCRUMBS_IPFS` | ipfs on the PATH | The kubo binary, for `push`, `pull` and the hive. |
 | `BREADCRUMBS_HERMES_REPO` | ~/.hermes/hermes-agent | The Hermes checkout that `seat` commands read. |
+
+`python -m breadcrumbs --home <HERMES_HOME>/breadcrumbs ace` shows the size of each chat against its target
+(from `ace.log`; read-only). A model sees only its own context, not the size of it.
+
+ACE also takes Hermes's built-in compressor (the intercept). Hermes runs the built-in where an agent has
+no plugin engine: a profile with no `context.engine`, safe-worker mode, an engine that does not load, and
+the gateway's `/compress`. In a profile whose memory provider is breadcrumbs and that opts in, ACE folds in its place,
+and no model writes a summary. Each capture writes one Hermes warning and one `ace.log` line
+(`act=intercept`). The intercept is opt-in: a profile gets it with `"intercept": true` in
+`$HERMES_HOME/breadcrumbs/config.json`. A profile that selects ACE (`context.engine: breadcrumbs`) does not need
+it.
 
 </details>
 
@@ -485,31 +478,43 @@ hook sees. There the hook adds no line. The import and the `worker` receipt do n
 </details>
 
 <details>
-<summary><b>One memory for each git repository or folder: scopes</b></summary>
+<summary><b>One codebase per profile: islands</b></summary>
 
-Two codebases in one memory dilute it: recall can bring back a crumb of the wrong codebase. Hermes profiles can keep
-them apart, but a profile is a whole agent (keys, skills, sessions, a gateway), and one profile for each repository is
-more machinery than the problem needs. breadcrumbs keys the memory to the place instead.
+A profile has one memory. Two codebases in one chat dilute the context: the chat holds the text of both,
+and recall can bring back a crumb of the wrong codebase. The purpose of `/island` is to keep the context
+from losing the benefits of breadcrumbs through dilution. It gives a codebase its own profile, so each
+profile works in one codebase. breadcrumbs has no measurement of this dilution yet.
 
-- **The project of a folder** is the nearest of: a folder with a `.breadcrumbs` entry (any depth; a file whose text is `off`
-  says this place has no project and uses the default memory), a git repository (a worktree or submodule is its main
-  repository), a source tree (a folder with `pyproject.toml`, `package.json`, ...), and else the folder itself. The home
-  folder is the one exception: its project is the profile's default memory, which keeps what it already holds.
-- **The folder of the chat** is what Hermes gives as the session cwd (`agent.runtime_cwd`), else `TERMINAL_CWD`, else the folder
-  of the process. Hermes passes a memory provider no folder, so breadcrumbs reads it itself.
-- **The store** of a scope is `<profile home>/breadcrumbs/scopes/<name>-<8 hex>` (the hex is from the real path). It is not in
-  the repository, so no memory reaches git. A `config.json` there overrides the default `config.json` of the profile.
-- **Reading further.** Automatic recall and every write use the nearest scope. `crumb_find` with `scope: "up"` also reads the
-  scopes above and the default memory; `"all"` reads every scope of the profile. A hit of another scope sits under a
-  `◇ scope NAME` line, and `crumb(id)` opens an id that another scope holds (a crumb id is a content hash).
-- **Off.** `BREADCRUMBS_SCOPE=off` or `"scope": "off"` in `config.json`: every chat uses the default memory.
+breadcrumbs finds the codebase of each tool call: the git repository under your home folder that holds
+the call's path. A worktree or a submodule counts as its main repository. Hermes's own files, repositories
+in hidden folders (`~/.pyenv`) and folders outside your home folder are not codebases. When the profile's
+`terminal.cwd` is in a codebase, that codebase is the island of the profile.
+
+- **The offer.** When a chat makes 3 calls in a codebase that is not the island of its profile, its next
+  reply ends with a red offer. A profile with no island (the default profile, for example) gets the offer
+  at the first call in its first codebase, in the first reply that follows. With no tool call yet, the
+  first reply carries it for the codebase of the launch folder (0 calls). A profile with an island gets it
+  at a second codebase. The offer names the
+  codebases and gives one command: `/island PATH`, or `hermes -p NAME` when another
+  profile has that codebase as its island. A chat gets the offer one time for each codebase. The offer
+  changes nothing by itself.
+- **The handoff.** In a chat, `/island` asks first in a modal picker (Yes / No), then gives the codebase that Hermes was launched in its own profile and asks Hermes to end the chat (`/quit`, best effort); only a Yes acts. A PATH skips the question. A chat that starts inside the island of its profile gets one NOTE at its first reply with the ways to open the visualizer (the desktop map item, `term` in Kitty or Ghostty, `serve --open` in a browser). A messaging chat (Telegram, Discord, ...) gets a disclaimer instead: use a local session or `hermes islands island PATH`. The CLI, TUI and desktop chats that the gateway (gatewayd) runs are local sessions.
+  `/island PATH [NAME]` names another codebase or another profile name. A relative PATH is in the chat's folder (where Tab completes a path). The
+  `terminal.cwd` of that profile is the root of the repository. The answer gives the command that
+  continues the work there: `hermes -p NAME`.
+- **The checks.** `/island status` shows the island of this profile, the islands of all profiles,
+  the problems of each island, and the codebases of this profile's own tool calls. `/island --all` gives
+  the island of each profile and the codebases of its tool calls, with a verdict.
 
 ```sh
-python3 -m breadcrumbs scopes [PROFILE]            # the scopes that have a memory
-python3 -m breadcrumbs scopes --here PATH          # the scope of a folder, and the scopes above it
+python3 -m breadcrumbs sources PROFILE   # the codebases of the profile's past tool calls: calls, chats, last use
 ```
 
-The ACE context engine and its logs (`ace.log`, `usage.log`) stay in the profile's default store.
+The new profile is a clone of the profile that runs the command. Hermes's own CLI makes the clone and
+sets its `terminal.cwd`. When a profile with the default name exists and has no island, it gets the
+island (its `terminal.cwd`); `/island` makes no second profile. breadcrumbs
+needs no other plugin for `/island`. Hermes also copies the folder of the memory provider into a clone,
+so a new island starts with a copy of the breadcrumbs store of the old profile.
 
 </details>
 
@@ -524,13 +529,14 @@ danger. breadcrumbs gives each danger a guard and a signal.
 |---|---|---|---|
 | ACE folds older turns into crumbs. Between folds the layer does not change, so the prompt cache holds. | Below level 1, the model sees key words, not the exact text. At 8k and 16k, a plain window holds more exact text. | Each crumb keeps its exact text, and `crumb(id, 1)` gives it back. At 16k or less, the layer takes 15% of a fold. | `ace.log`: one line per request |
 | Recall and the `crumb` tools bring past text back as crumbs. | The model can open the wrong crumb, or no crumb. | Each event is a receipt: the refs, levels and bytes that the model saw, in a hash chain. | `rcpt` crumbs |
+| The intercept puts ACE in place of Hermes's built-in compressor. | It changes the compressor of a profile through private core imports, also a profile that did not select ACE. | It is off unless the profile has `"intercept": true`. Each capture writes one warning and one `ace.log` line. The fallback calls no model. | `ace.log`: `act=intercept` |
 | A small model writes summaries. | A summary can be wrong. | A `sum` crumb keeps the model's SHA-256 and the exact prompt. Its sources stay exact. | `sum` crumbs |
 | The hive searches other hosts. | Text from another host comes into the context. | Each part must pass its CRC32C check. A late peer passes. The id names the peer. | receipts with `id@peer/store` |
-| One memory for each codebase. | Two codebases in one memory dilute the context and mix their recall. | The store follows the git repository or folder of the chat; `crumb_find` reads further only on request (`scope`). | `scope.json` |
+| One memory per profile | Two codebases in one chat dilute the context and mix their recall. | A red offer at the 3rd call. `/island PATH` gives the codebase its own profile. | `islands.json` |
 | ACE raises its target when the tool calls only read. | A larger target costs more tokens in each request. | Only a fold interval with no work raises the target (by 1.45), up to Hermes's threshold or `ace_ceiling`. An interval with work folds as before. | `act=ratchet` in `ace.log` |
 
-Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that you can read.
-`/scope` and `/viz` are commands of breadcrumbs.
+Each signal is a file (`ace.log`, `islands.json`) or a crumb (`rcpt`, `sum`) that you can read.
+`/island` is a command of breadcrumbs.
 
 </details>
 
@@ -556,11 +562,19 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
   to record its SHA-256. The subprocess gets a minimal environment: `PATH`, `HOME`, `LANG`, `TMPDIR`,
   and the `LC_*`, `LLAMA_*`, `GGML_*` and GPU variables, never a name with KEY, TOKEN, SECRET or
   PASSWORD (`summarize.child_env`). `BREADCRUMBS_SUMMARIZE=0` turns this off.
-- It makes a store folder under `<profile home>/breadcrumbs/scopes/` for each scope that a chat works in, with a `scope.json`
-  (its real path and kind). It reads the folder of the chat and looks for `.git` and `.breadcrumbs` entries in that folder and
-  its parents. It starts no process, makes no profile, and changes no config of Hermes.
-- `/scope` shows the scope of the chat and the scopes that have a memory (read-only). `python3 -m breadcrumbs scopes` does the same
-  from a shell.
+- `/island` asks first, in a Yes or No picker. After a Yes, it runs `hermes profile create NAME --clone-from
+  CURRENT` and `hermes -p NAME config set terminal.cwd PATH` as child processes (stdin closed, 300 seconds at
+  most for each), and then asks Hermes to end the chat with `/quit`. The clone copies the keys, the plugins and
+  the memory files of the profile that it comes from. A profile that exists and has no island gets only the
+  `config set`. `/island PATH` skips the question.
+- It writes `islands.json` in the store folder: for the newest 64 chats, the codebases of their tool calls, with
+  counts. `post_tool_call` reads the paths in the arguments of each tool call. `on_session_start` reads the
+  folder that the chat started in. `transform_llm_output` adds the offer to a reply when the chat mixes
+  codebases (and, one time, a note on the ways to open the explorer when a chat starts in its island).
+- The island checks (`/island status`, `/island --all`) read the `config.yaml` of the profiles (their
+  `terminal.cwd` and `memory.provider`) and look in the `plugins` folder of a profile for this plugin.
+  To count the codebases of past tool calls, `/island status` reads the `state.db` of this profile,
+  `/island --all` the `state.db` of every profile, and `sources PROFILE` that of one profile (all read-only).
 - The dashboard API (the Desktop page) is read-only, and the dashboard's session secret guards it. It reads the
   store of the active profile. A request with `store=NAME` reads the store, or the `state.db` for the log
   views, of another profile of the same Hermes root, and `/stores` lists those stores with their paths and
@@ -577,22 +591,9 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
   the rows of that child. It writes them, as Hermes stored them, to the child's own store
   (`$HERMES_HOME/breadcrumbs/children/<child session id>/`) and exports them there as a CAR file. Then it
   imports that CAR file into the store of this profile as private crumbs. The CAR file stays on the machine.
-- The hook `transform_tool_result` returns at once for every tool but `delegate_task`, and for `delegate_task`
-  while the dial `family` is off. With the dial on, it reads the result of each `delegate_task` call and adds one
-  line to the entry of each child that it kept: the handle of that child's session. It changes nothing else, and
-  it sends nothing out.
-- The hooks `post_api_request` (after each model request of a chat) and `post_auxiliary_call` (after each helper
-  call: titles, compression, approval, vision) each append one line to `$HERMES_HOME/breadcrumbs/usage.log`: the
-  ids of the session, turn and request, the model and provider names, the token counts (input, cache read, cache
-  write, output, reasoning), the message count, the duration and the finish reason. They never read the request,
-  the response, an error text or the base URL into a line, and they change nothing. The file turns over to
-  `usage.log.1` at 1 MB. `BREADCRUMBS_USAGE_LOG=0` writes nothing.
-- The `llm_request` middleware reads `$HERMES_HOME/breadcrumbs/config.json` at each model request of a chat.
-  When a `"models"` entry of the model holds request options (`temperature`, `top_p`, `top_k`, ...), it puts
-  them into that request: a key of the OpenAI spec at the top level, any other in `extra_body`, and a null removes
-  the key. Only the OpenAI chat-completions wire changes, and only for a provider that you call with an API key;
-  the Anthropic wire, a provider that logs in with OAuth and the helper calls keep the request that Hermes builds.
-  With no options for the model, it changes nothing.
+- With the dial `family` on, the hook `transform_tool_result` reads the result of each `delegate_task` call
+  (and no other tool's) and adds one line to the entry of each child that it kept: the handle of that child's
+  session. It changes nothing else, and it sends nothing out.
 - `share` and `import` write and read CAR files only at the paths you give. No IPFS daemon runs.
 - `push` and `pull` (CLI only) run your local `ipfs` binary (kubo) with your `IPFS_PATH`; what it
   connects to is your kubo configuration. `push` adds only the public crumbs of one project.

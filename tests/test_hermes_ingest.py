@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs_hermes.hermes_ingest import ingest_state_db
+from breadcrumbs.hermes_ingest import ingest_state_db
 from breadcrumbs.history import Refs
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import leaves, plain, step_text

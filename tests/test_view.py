@@ -1,4 +1,3 @@
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import calendar
 import contextlib
 import importlib.util
@@ -17,12 +16,10 @@ import unittest
 import urllib.error
 import urllib.request
 
-from breadcrumbs import ports
-
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs_spacegraph import view
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+from breadcrumbs import view
+from breadcrumbs.hermes import BreadcrumbsProvider
 
 SESSIONS = {
     "tea1": [("how long should green tea steep in the kettle water", "steep green tea two minutes; kettle water near 80 C")],
@@ -414,10 +411,6 @@ SECRET = "SECRET-TEXT-X"  # planted in every text column of the fixture state.db
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SONNET, OPUS, HAIKU = "claude-sonnet-5-5", "claude-opus-5", "claude-haiku-5"
 REPO_A, REPO_B = "/Users/demo/code/home-notes", "/Users/demo/code/bike-fix"  # made-up codebases
-# a field of a usage line -> the measure that sums it; the key of a measure -> itself (the parts of the ratios of the
-# cache writes beside the ACE acts are measures: cw_after_fold / acts_fold)
-FIELD_MEASURE = {**{m["key"]: m["key"] for m in view.MEASURES}, **{f: m for m, f in view.USAGE_FIELD.items()}}
-FAKE_RATES = {SONNET: (3, 0.3, 3.75), OPUS: (15, 1.5, 18.75)}  # made-up rates (USD per 1M: input, cache read, cache write); none for HAIKU
 
 
 def stamp(ts):
@@ -547,15 +540,15 @@ def build_fixture(home, far_days=0, secret=SECRET, spread=100):
         {"sid": "parser", "model": SONNET, "t0": span["parser"][0], "est": 0.12, "status": "estimated", "source": "provider_models_api"},
         {"sid": "ghost", "model": OPUS, "t0": far, "t1": far + 1800, "est": 1.5, "status": "estimated", "source": "provider_models_api"}]
     state_db(os.path.join(home, "state.db"), sessions, usage, secret)
-    # ace.log: eight requests of 'today' (two folds) and six of its continuation (one fold, the last a ratchet); usage.log:
-    # the provider's count of each, a chat that went from Sonnet to Opus, the calls of two auxiliary tasks, and two helpers
+    # ace.log: eight requests of 'today' (two folds) and six of its continuation; usage.log: the provider's count of each,
+    # a chat that went from Sonnet to Opus, the calls of two auxiliary tasks, and two helpers
     ace, use = {"today": [], "today-cont": []}, {"today": [], "today-cont": [], "today-h1": [], "today-h2": [], "today-cont-h": []}
     plan = [("pass", 400, 400), ("pass", 700, 700), ("pass", 990, 990), ("fold", 1200, 700), ("keep", 1300, 800),
             ("keep", 1500, 950), ("keep", 1700, 1010), ("fold", 1900, 880)]
     for sid, start, model_of in (("today", t0 + 5, lambda k: SONNET if k < 5 else OPUS),
                                  ("today-cont", t1 + 6 * H + 5, lambda k: OPUS)):
         step = spread if sid == "today" else 3 * spread + 300  # 600 at the default spread
-        for k, (act, raw, sent) in enumerate(plan[:8] if sid == "today" else plan[:5] + [("ratchet", 1500, 950)]):
+        for k, (act, raw, sent) in enumerate(plan[:8 if sid == "today" else 6]):
             ts = start + k * step
             ace[sid].append(ace_log_line(ts, sid, act, raw, sent, base=500, layer=9 if k > 2 else 0, lay=120 if k > 2 else 0,
                                          folds=sum(1 for p in plan[:k + 1] if p[0] == "fold")))
@@ -584,12 +577,9 @@ class MeasuresTest(unittest.TestCase):
         cls.home = cls.tmp.name
         cls.fx = build_fixture(cls.home)
         cls.root = cls.fx["root"]
-        cls.price = ports.get("price")  # a fake price port: the numbers of the tests never depend on Hermes's table
-        ports.give("price", lambda model, provider: FAKE_RATES.get(model))
 
     @classmethod
     def tearDownClass(cls):
-        ports.give("price", cls.price)
         cls.tmp.cleanup()
 
     def setUp(self):
@@ -621,23 +611,11 @@ class MeasuresTest(unittest.TestCase):
         for kw in self.UNITS:
             top, rows, facts = self.load(**kw)
             by = {(f[0], f[1], f[3], f[7], f[8]): (f[4], f[5]) for f in facts}
-            parts = {(f[0], f[1], f[3], f[7], f[8]): (f[9], f[10]) for f in facts if len(f) > 9}  # a ratio: its parts
             members = {}
             for r in rows.values():
                 if r["parent"]:
                     members.setdefault(r["parent"], []).append(r["key"])
             for (row, ctx, m, model, task), (own, incl) in by.items():
-                if view.MEASURE[m]["agg"] == "ratio":  # its parts are the sums of its fields (checked above as sums), divided
-                    p_own, p_incl = parts[(row, ctx, m, model, task)]
-                    num, dens = view.MEASURE[m]["of"]
-                    for got, at in ((p_own, 0), (p_incl, 1)):
-                        sums = [by.get((row, ctx, FIELD_MEASURE[f], model, task), (None, None))[at] for f in [num] + dens]
-                        want = None if all(x is None for x in sums) else [sums[0] or 0, sum(x or 0 for x in sums[1:])]
-                        self.assertEqual(got, want, (kw, row, ctx, m, at))
-                        self.assertEqual((own, incl)[at], got[0] / got[1] if got and got[1] else None, (kw, row, ctx, m, at))
-                    self.assertIsNotNone(incl, "a ratio with no number has no fact")
-                    checked[m] = checked.get(m, 0) + 1
-                    continue
                 kids = [by.get((k, ctx, m, model, task), (None, 0))[1] for k in members.get(row, ())]
                 want = max([own or 0] + kids) if view.MEASURE[m]["agg"] == "max" else (own or 0) + sum(kids)
                 self.assertAlmostEqual(incl, want, places=6, msg=(kw, row, ctx, m))
@@ -649,27 +627,16 @@ class MeasuresTest(unittest.TestCase):
             top, rows, facts = self.load(**kw)
             cells, roots = {}, {}
             for f in facts:
-                key, agg = (f[3], f[1], f[7], f[8]), view.MEASURE[f[3]]["agg"]
-                if agg == "ratio":
-                    continue  # a ratio: its parts are checked against the totals of its fields, below
+                key = (f[3], f[1], f[7], f[8])
                 if f[4] is not None:
-                    cells[key] = max(cells.get(key, 0), f[4]) if agg == "max" else cells.get(key, 0) + f[4]
+                    cells[key] = max(cells.get(key, 0), f[4]) if view.MEASURE[f[3]]["agg"] == "max" else cells.get(key, 0) + f[4]
                 if rows[f[0]]["parent"] is None:
-                    roots[key] = max(roots.get(key, 0), f[5]) if agg == "max" else roots.get(key, 0) + f[5]
-            totals = {(t[0], t[1], t[3], t[4]): t for t in top["totals"]}
-            ratios = {key for key in totals if view.MEASURE[key[0]]["agg"] == "ratio"}
-            self.assertEqual(set(totals) - ratios, set(cells), kw)
-            self.assertEqual(ratios, {(f[3], f[1], f[7], f[8]) for f in facts if f[3] in view.MEASURE
-                                      and view.MEASURE[f[3]]["agg"] == "ratio" and f[4] is not None}, kw)
-            for key, t in totals.items():
-                if key in ratios:  # the parts of a ratio's total are the totals of its fields; its number is their share
-                    num, dens = view.MEASURE[key[0]]["of"]
-                    sums = [totals.get((FIELD_MEASURE[f],) + key[1:], [0, 0, 0])[2] for f in [num] + dens]
-                    self.assertEqual(t[5], [sums[0], sum(sums[1:])], (kw, key))
-                    self.assertAlmostEqual(t[2], t[5][0] / t[5][1], places=9, msg=(kw, key))
-                    continue
-                self.assertAlmostEqual(t[2], cells[key], places=6, msg=(kw, key))  # the sum of all self numbers
-                self.assertAlmostEqual(t[2], roots[key], places=6, msg=(kw, key))  # the incl of the roots
+                    roots[key] = max(roots.get(key, 0), f[5]) if view.MEASURE[f[3]]["agg"] == "max" else roots.get(key, 0) + f[5]
+            totals = {(m, c, model, task): v for m, c, v, model, task in top["totals"]}
+            self.assertEqual(set(totals), set(cells), kw)
+            for key, v in totals.items():
+                self.assertAlmostEqual(v, cells[key], places=6, msg=(kw, key))  # the sum of all self numbers
+                self.assertAlmostEqual(v, roots[key], places=6, msg=(kw, key))  # the incl of the roots
 
     def test_the_planted_text_is_in_no_output(self):
         outs = []
@@ -1014,201 +981,15 @@ class MeasuresTest(unittest.TestCase):
         got = {(x[1], x[3]): x[4] for x in r["facts"] if x[0] == r["dims"]["family"][0]["key"]}
         self.assertEqual([got[(i, "u_prompt")] - got[(i, "ace_sent")] for i in range(8)], [60] * 8)
 
-    def test_a_usage_line_of_another_harness_is_read_with_the_lines_of_hermes(self):
-        from breadcrumbs import usage
-        with tempfile.TemporaryDirectory() as root:
-            usage.append(root, [usage.record("codex", "s-x", "s-x:9", 1794000000, "gpt-demo", "openai", 10, 80, 5, 3, 1)])
-            r, = view.usage_requests(root)
-            self.assertEqual((r["sess"], r["req"], r["model"], r["prov"], r["in"], r["cr"], r["cw"], r["prompt"], r["task"]),
-                             ("s-x", "s-x:9", "gpt-demo", "openai", 10, 80, 5, 95, "main"))
-
-    def test_the_cache_metrics_are_ratios_of_the_sums_of_the_usage_lines(self):
-        top = self.v.measures(m="cache_hit,cache_write_share,cache_reuse,cache_breaks,break_tokens,cache_saved_usd")
-        row = next(r for r in top["dims"]["family"] if r["sid"] == "today")["key"]
-        own = {(x[3], x[7], x[8]): x for x in top["facts"] if x[0] == row and x[4] is not None}
-        cr, prompt = [200, 350, 495, 350, 400], [460, 760, 1050, 760, 860]  # the Sonnet requests of 'today' (build_fixture)
-        hit = own[("cache_hit", SONNET, "main")]
-        self.assertEqual(hit[9], [sum(cr), sum(prompt)], "a ratio carries its parts")
-        self.assertEqual(hit[4], sum(cr) / sum(prompt), "the share of the sums, not a mean of shares")
-        self.assertEqual(own[("cache_write_share", SONNET, "main")][4], 40 / sum(prompt))
-        self.assertEqual(own[("cache_reuse", SONNET, "main")][4], sum(cr) / 40)
-        self.assertEqual(own[("cache_reuse", OPUS, "main")][4], (475 + 505 + 440) / 40)
-        self.assertEqual(own[("cache_hit", HAIKU, "compression")][4], 0)
-        self.assertNotIn(("cache_reuse", HAIKU, "compression"), own, "no write: a denominator of 0 gives no cell")
-        self.assertEqual([own[("cache_breaks", m, "main")][4] for m in (SONNET, OPUS)], [1, 1], "the two folds wrote again")
-        self.assertEqual([own[("break_tokens", m, "main")][4] for m in (SONNET, OPUS)], [40, 40])
-        self.assertAlmostEqual(own[("cache_saved_usd", SONNET, "main")][4], (sum(cr) * (3 - 0.3) - 40 * (3.75 - 3)) / 1e6, places=9)
-        self.assertNotIn(("cache_saved_usd", HAIKU, "compression"), own, "the fake price port has no rates for it")
-        self.assertEqual(own[("cache_hit", SONNET, "main")][6][:3], ["usage", "today", 5])
-        # the grand total of a ratio: the parts of every usage line of its model and task, summed, then divided
-        lines = view.usage_requests(self.root)
-        for model, task in ((SONNET, "main"), (OPUS, "main")):
-            parts = [t[5] for t in top["totals"] if t[0] == "cache_hit" and t[3] == model and t[4] == task]
-            want = [sum(r["cr"] for r in lines if r["model"] == model and r["task"] == task),
-                    sum(r["prompt"] for r in lines if r["model"] == model and r["task"] == task)]
-            self.assertEqual([sum(p[0] for p in parts), sum(p[1] for p in parts)], want, model)
-        self.assertTrue(all(t[2] is not None for t in top["totals"]))
-        # on the request axis a request is a cell of its own
-        r = self.v.measures(unit="request", sid="today", m="cache_hit,cache_breaks")
-        hits = {x[1]: x[4] for x in r["facts"] if x[3] == "cache_hit" and x[0] == r["dims"]["family"][0]["key"]}
-        sent = [400, 700, 990, 700, 800, 950, 1010, 880]
-        self.assertEqual([hits[i] for i in range(8)], [(s // 2) / (s + 60) for s in sent])
-        self.assertEqual(sorted(x[1] for x in r["facts"] if x[3] == "cache_breaks" and x[4] and x[0] == r["dims"]["family"][0]["key"]),
-                         [3, 7])
-
-    def test_the_cache_writes_beside_the_acts_are_ratios_of_sums_at_cell_row_and_total(self):
-        from breadcrumbs import metrics, usage
-        keys = ",".join(usage.AFTER_KEYS)
-        top = self.v.measures(m=keys)
-        row = {r["sid"]: r["key"] for r in top["dims"]["family"]}
-        cols = {}
-        for x in top["facts"]:
-            if x[8] == "main":
-                cols.setdefault((x[0], x[3], x[7]), []).append(x)
-
-        def f(sid, m, model):
-            """The cells of a row (one fact per column): (own, incl) folded over its columns, a ratio as its parts."""
-            own = incl = None
-            for x in cols.get((row[sid], m, model), ()):
-                if metrics.get(m)["agg"] == "ratio":
-                    own = x[9] if own is None else own if x[9] is None else [own[0] + x[9][0], own[1] + x[9][1]]
-                    incl = [(incl or [0, 0])[0] + x[10][0], (incl or [0, 0])[1] + x[10][1]]
-                else:
-                    own = x[4] if own is None else own if x[4] is None else own + x[4]
-                    incl = (incl or 0) + x[5]
-            return own, incl
-
-        # the cell: 'today' alone, one hour column. Sonnet: pass x3, fold, keep; Opus: keep x2, fold (build_fixture). The
-        # request after a fold writes 40 and is a cache break; the others write nothing.
-        today = [x for x in top["facts"] if x[0] == row["today"] and x[4] is not None and x[3] == "cw_per_fold"]
-        self.assertEqual(sorted((x[7], x[9], x[4]) for x in today), [(OPUS, [40, 1], 40), (SONNET, [40, 1], 40)])
-        self.assertEqual(len({x[1] for x in today}), 1, "one column")
-        self.assertEqual(today[0][6][:3], ["usage", "today", 1], "the cell of the request after the fold")
-        self.assertEqual([f("today", "acts_" + a, SONNET)[0] for a in ("pass", "fold", "keep")], [3, 1, 1])
-        self.assertEqual((f("today", "cw_after_fold", SONNET)[0], f("today", "breaks_after_fold", SONNET)[0]), (40, 1))
-        self.assertEqual(f("today", "break_rate_pass", SONNET)[0], [0, 3])
-        self.assertEqual(f("today", "break_rate_fold", OPUS)[0], [1, 1])
-        self.assertEqual(f("today", "cw_per_keep", OPUS)[0], [0, 2])
-        self.assertEqual(f("today", "fold_cw_share", SONNET)[0], [40, 40])
-        # the row: 'today' and what it includes (its continuation, Opus: pass x3, fold, keep, ratchet; helpers: no write)
-        self.assertEqual(f("today", "cw_per_fold", OPUS)[1], [40 + 40, 2])
-        self.assertEqual(f("today", "cw_per_pass", OPUS)[1], [0, 3])
-        self.assertEqual(f("today", "break_rate_keep", OPUS)[1], [0, 3])
-        self.assertEqual(f("today", "fold_cw_share", OPUS)[1], [80, 80])
-        self.assertEqual(f("today", "break_rate_ratchet", OPUS), (None, [0, 1]), "only its continuation has a ratchet")
-        self.assertEqual(f("today-cont", "cw_per_ratchet", OPUS)[0], [0, 1])
-        # the grand total (one for each column): the parts of every row, summed, then divided
-        tot = {}
-        for t in top["totals"]:
-            if t[4] == "main" and metrics.get(t[0])["agg"] == "ratio":
-                self.assertEqual(t[2], metrics.value("ratio", t[5]))
-                have = tot.get((t[0], t[3]), [0, 0])
-                tot[(t[0], t[3])] = [have[0] + t[5][0], have[1] + t[5][1]]
-        self.assertEqual([tot[("cw_per_fold", m)] for m in (SONNET, OPUS)], [[40, 1], [80, 2]])
-        self.assertEqual(tot[("break_rate_fold", OPUS)], [2, 2])
-        self.assertEqual(tot[("break_rate_keep", OPUS)], [0, 3])
-        self.assertEqual(tot[("fold_cw_share", SONNET)], [40, 40])
-        self.assertEqual(tot[("cw_per_ratchet", OPUS)], [0, 1])
-        self.assertNotIn(("cw_per_ratchet", SONNET), tot, "no ratchet of Sonnet: no number")
-        # every ratio, in every cell, row and total: its parts are the sums of its sum metrics there (u_cw: all main writes)
-        nums = self.v.measures(m=keys + ",u_cw")
-        part = {(x[0], x[1], x[3], x[7], x[8]): (x[4], x[5]) for x in nums["facts"]}
-        tsum = {(t[0], t[1], t[3], t[4]): t[2] for t in nums["totals"]}
-        ratios = [m for m in usage.AFTER if m["agg"] == "ratio"]
-        self.assertEqual(len(ratios), 9)
-        seen = set()
-        for x in nums["facts"]:
-            m = metrics.get(x[3])
-            if m["agg"] != "ratio":
-                continue
-            seen.add(x[3])
-            (num, (den,)), at = m["of"], (x[0], x[1])
-            den = "u_cw" if den == "cw" else den
-            for j, parts in ((0, x[9]), (1, x[10])):
-                want = [part.get(at + (num, x[7], x[8]), (None, None))[j], part.get(at + (den, x[7], x[8]), (None, None))[j]]
-                self.assertEqual(parts, None if want[1] in (None, 0) else [want[0] or 0, want[1]], (x[3], j))
-                self.assertEqual(x[4 + j], None if parts is None else parts[0] / parts[1])
-        for t in nums["totals"]:
-            m = metrics.get(t[0])
-            if m["agg"] == "ratio":
-                (num, (den,)) = m["of"]
-                den = "u_cw" if den == "cw" else den
-                self.assertEqual(t[5], [tsum.get((num, t[1], t[3], t[4]), 0), tsum[(den, t[1], t[3], t[4])]], t[0])
-        self.assertEqual(seen, {m["key"] for m in ratios})
-        # fold_cw_share is a share of the main writes: never more than 1, in any cell, row or total
-        shares = [v for x in nums["facts"] if x[3] == "fold_cw_share" for v in (x[4], x[5]) if v is not None]
-        shares += [t[2] for t in nums["totals"] if t[0] == "fold_cw_share" and t[2] is not None]
-        self.assertTrue(shares)
-        self.assertLessEqual(max(shares), 1.0)
-        # on the request axis the numbers sit on the request after the act
-        r = self.v.measures(unit="request", sid="today", m=keys)
-        own = {(x[1], x[3]): x[4] for x in r["facts"] if x[0] == r["dims"]["family"][0]["key"] and x[4] is not None}
-        self.assertEqual(sorted(c for c, m in own if m == "acts_fold"), [3, 7])
-        self.assertEqual(sorted(c for c, m in own if m == "acts_pass"), [0, 1, 2])
-        self.assertEqual((own[(3, "cw_after_fold")], own[(7, "break_rate_fold")], own[(4, "cw_per_keep")]), (40, 1, 0))
-        # no harness gives the join: no cell
-        saved = ports.get("ace_join")
-        self.addCleanup(ports.give, "ace_join", saved)
-        ports.give("ace_join", None)
-        self.assertEqual(self.v.measures(m=keys)["facts"], [])
-
     def test_the_request_axis_pairs_an_ace_line_with_the_usage_line_that_follows_it(self):
-        ace = [{"ts": 10, "n": "a1", "sess": "s", "act": "pass"}, {"ts": 20, "n": "a2", "sess": "s", "act": "keep"},
-               {"ts": 40, "n": "a3", "sess": "s", "act": "fold"}]
-        use = [{"ts": 11, "n": "u1", "sess": "s", "task": "main"}, {"ts": 12, "n": "u1b", "sess": "s", "task": "main"},
-               {"ts": 41, "n": "u3", "sess": "s", "task": "main"}, {"ts": 90, "n": "u4", "sess": "s", "task": "main"}]
-
-        def pairs(slots):
-            return [(s["ace"] and s["ace"]["n"], s["usage"] and s["usage"]["n"], [m["n"] for m in s["more"]]) for s in slots]
-
-        # the pairs come from the one join (the port ace_join): a2 and a3 shaped u3, and its line is the fold
+        ace = [{"ts": 10, "n": "a1"}, {"ts": 20, "n": "a2"}, {"ts": 40, "n": "a3"}]
+        use = [{"ts": 11, "n": "u1"}, {"ts": 12, "n": "u1b"}, {"ts": 41, "n": "u3"}, {"ts": 90, "n": "u4"}]
         slots = view.request_slots(ace, use)
-        self.assertEqual(pairs(slots), [("a1", "u1", []), (None, "u1b", []), ("a3", "u3", ["a2"]), (None, "u4", [])])
-        self.assertEqual([s["ts"] for s in slots], [10, 12, 20, 90])
-        self.assertEqual(view.request_slots([], use)[0]["ace"], None)
-        self.assertEqual(len(view.request_slots(ace, [])), 3)
-        # no harness gives the join: an ace line opens a slot and the first usage line after it closes it
-        saved = ports.get("ace_join")
-        self.addCleanup(ports.give, "ace_join", saved)
-        ports.give("ace_join", None)
-        slots = view.request_slots(ace, use)
-        self.assertEqual(pairs(slots), [("a1", "u1", []), (None, "u1b", []), ("a2", None, []), ("a3", "u3", []), (None, "u4", [])])
+        self.assertEqual([(s["ace"] and s["ace"]["n"], s["usage"] and s["usage"]["n"]) for s in slots],
+                         [("a1", "u1"), (None, "u1b"), ("a2", None), ("a3", "u3"), (None, "u4")])
         self.assertEqual([s["ts"] for s in slots], [10, 12, 20, 40, 90])
         self.assertEqual(view.request_slots([], use)[0]["ace"], None)
         self.assertEqual(len(view.request_slots(ace, [])), 3)
-
-    def test_the_request_axis_puts_a_line_in_the_slot_of_the_request_that_it_shaped(self):
-        def line(n, ts, act="pass"):
-            return {"n": n, "ts": ts, "sess": "s", "act": act}
-
-        def req(n, ts, dur):
-            return {"n": n, "ts": ts, "dur": dur, "sess": "s", "task": "main", "req": n}
-
-        ace = [line("E", -30), line("L1", 94), line("L2", 100), line("K", 131, "keep"), line("F", 132, "fold"),
-               line("P1", 141), line("P2", 142), line("Z", 200)]
-        use = [req("R1", 100, 5.2), req("R2", 110, 9.6), req("R3", 131, 2), req("R4", 140, 5), req("R5", 150, 3)]
-
-        def pairs(slots):
-            return [(s["ace"] and s["ace"]["n"], s["usage"] and s["usage"]["n"], [m["n"] for m in s["more"]]) for s in slots]
-
-        slots = view.request_slots(ace, use)
-        self.assertEqual(pairs(slots), [
-            ("E", None, []),       # a line more than 120 s before the first request starts joins nothing: its own slot
-            ("L1", "R1", []),      # a line before the first request joins it
-            ("L2", "R2", []),      # a line in the second that R1 ended shaped R2 (it starts at 100.4), not R1
-            (None, "R3", []),      # a request that no line joins
-            ("F", "R4", ["K"]),    # two lines join R4: the fold is its line, the keep is kept with it
-            ("P1", "R5", ["P2"]),  # of two lines of one act, the first
-            ("Z", None, [])])      # a line after the last request
-        self.assertEqual([s["ts"] for s in slots], [-30, 94, 100, 131, 131, 141, 200],
-                         "a slot's time is its first line; in one second the request that ended sooner goes first")
-        # no harness gives the join: the old slots, where L2 closes with R1 and R2 is a slot of its own
-        saved = ports.get("ace_join")
-        self.addCleanup(ports.give, "ace_join", saved)
-        ports.give("ace_join", None)
-        self.assertEqual(pairs(view.request_slots(ace, use)), [
-            ("E", None, []), ("L1", None, []), ("L2", "R1", []), (None, "R2", []), ("K", "R3", []), ("F", "R4", []),
-            ("P1", None, []), ("P2", "R5", []), ("Z", None, [])])
 
     def test_the_time_axis_is_linear_and_a_time_has_a_place_on_it(self):
         kind, starts = view.time_buckets(1794000000, 1794000000 + 5 * 3600 + 5)
@@ -1493,7 +1274,7 @@ class MeasuresPageTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        with open(view.PAGE, encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "breadcrumbs", "view.html"), encoding="utf-8") as f:
             cls.page = f.read()
 
     def test_the_toolbar_has_the_toggle_beside_context_and_size(self):
@@ -1563,7 +1344,7 @@ class MeasuresSortTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        with open(view.PAGE, encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "breadcrumbs", "view.html"), encoding="utf-8") as f:
             cls.page = f.read()
         if "function meaSortNext(" not in cls.page or "function meaSortUrl(" not in cls.page:
             raise AssertionError("view.html has no sort block (meaSortNext ... meaSortUrl)")
@@ -2010,7 +1791,7 @@ class CalendarPageTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        with open(view.PAGE, encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "breadcrumbs", "view.html"), encoding="utf-8") as f:
             cls.page = f.read()
         cls.cal = cls.page.split("// -- the calendar layout: a day planner")[1].split("// -- the camera and the zoom stack")[0]
 
@@ -2072,7 +1853,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sorted(view.API), ["/api/ace", "/api/context", "/api/crumb", "/api/find", "/api/graph",
                                             "/api/path", "/api/session", "/api/trail", "/api/venn"])
         # the explorer's own routes (the Measures panel, the calendar layout): the dashboard table (tests/test_dashboard.py) is not changed by them
-        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/harness", "/api/measures", "/api/measures/labels"])
+        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/measures", "/api/measures/labels"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,6 @@ child go from state.db to the child's own store and a CAR file.
 The fixture state.db has one parent (p1), three children of it (c1, c2, c3) and a session that is nobody's child (x1).
 The text is neutral. c3 has one tool row with an empty result, so a store keeps no turn of it. With the dial off (the
 default), the provider opens no database and writes no file."""
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import hashlib
 import io
@@ -18,9 +17,8 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli
-from breadcrumbs_hermes import family
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+from breadcrumbs import cli, family
+from breadcrumbs.hermes import BreadcrumbsProvider
 from breadcrumbs.index import Index
 from breadcrumbs.share import import_car, read_car
 from breadcrumbs.store import Store

@@ -1,4 +1,3 @@
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json
@@ -14,7 +13,7 @@ from unittest import mock
 
 from breadcrumbs.crumbs import get_crumb
 from breadcrumbs.history import Refs
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+from breadcrumbs.hermes import BreadcrumbsProvider
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import put_tree, put_turn
 from breadcrumbs.lines import get_text

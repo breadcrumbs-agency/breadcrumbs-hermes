@@ -1,7 +1,7 @@
 """End to end on the OpenAI chat-completions wire, through Hermes's own AIAgent and the OpenAI SDK.
 
 A local HTTP server stands in for the model. It records each request body and answers "ok". The agent runs one
-turn without the plugin, then one turn after options.register() adds the llm_request middleware. The check: Hermes alone sends no temperature, and
+turn without the plugin, then one turn after dials.install(). The check: Hermes alone sends no temperature, and
 with the plugin the HTTP body holds each option of the model (top_k through extra_body). It uses a scratch
 HERMES_HOME and never touches a real profile. tests/hermes_integration.py runs it (wire_check); alone:
 
@@ -76,7 +76,7 @@ def turn(port):
 
 
 def main():
-    from breadcrumbs_hermes import options
+    from breadcrumbs import dials
     root = os.path.join(HOME, "breadcrumbs")
     os.makedirs(root, exist_ok=True)
     with open(os.path.join(root, "config.json"), "w", encoding="utf-8") as f:
@@ -90,10 +90,8 @@ def main():
             reply, {k: before[k] for k in OPTIONS if k in before} or "none"))
         if any(k in before for k in OPTIONS):
             raise SystemExit("FAIL: Hermes alone sent an option; this check assumes it sends none")
-        from hermes_cli.plugins import PluginContext, PluginManifest, get_plugin_manager
-        ctx = PluginContext(PluginManifest(name="breadcrumbs", key="breadcrumbs"), get_plugin_manager())
-        if not options.register(ctx, lambda: HOME):
-            raise SystemExit("FAIL: options.register found no register_middleware")
+        if not dials.install(lambda: HOME):
+            raise SystemExit("FAIL: dials.install found no ChatCompletionsTransport")
         reply, after = turn(port)
         got = {k: after.get(k) for k in OPTIONS}
         print("with the plugin reply=%r  sampling keys in the HTTP body: %s" % (reply, got))

@@ -1,7 +1,7 @@
 """Integration check through Hermes's own MemoryManager (run with the Hermes venv python).
 
   HERMES_PY=<the python of the Hermes venv, e.g. $(dirname $(readlink -f $(which hermes)))/python>
-  PYTHONPATH=.:../breadcrumbs-common:../breadcrumbs-spacegraph $HERMES_PY tests/hermes_integration.py
+  $HERMES_PY tests/hermes_integration.py
 
 It uses a scratch HERMES_HOME. It never touches a real profile.
 """
@@ -18,7 +18,7 @@ sys.path.insert(0, REPO)
 
 from agent.memory_manager import MemoryManager  # noqa: E402
 
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider  # noqa: E402
+from breadcrumbs.hermes import BreadcrumbsProvider  # noqa: E402
 
 
 def main():
@@ -208,8 +208,7 @@ def ace_check():
     from agent.context_engine import ContextEngine
     from agent.conversation_loop import _apply_context_engine_selection
     from plugins.context_engine import load_context_engine
-    from breadcrumbs_hermes import ace
-    from breadcrumbs import cli
+    from breadcrumbs import ace, cli
     from test_ace import SYSTEM, chat
     with tempfile.TemporaryDirectory() as home:
         os.environ["HERMES_HOME"] = home
@@ -251,8 +250,7 @@ def handbook_check():
     from agent.prompt_builder import _plugin_skill_prompt_rows
     from plugins.memory import load_memory_provider
     from tools.skills_tool import skill_view
-    from breadcrumbs import cli
-    from breadcrumbs_hermes import hermes
+    from breadcrumbs import cli, hermes
     with tempfile.TemporaryDirectory() as home:
         os.environ["HERMES_HOME"] = home
         with open(os.path.join(home, "config.yaml"), "w") as f:
@@ -262,12 +260,6 @@ def handbook_check():
         assert prov is not None and prov.handbook == "breadcrumbs:dispatch", getattr(prov, "handbook", None)
         rows = dict(_plugin_skill_prompt_rows(set(), None, None, None))
         assert rows.get("breadcrumbs:dispatch") == hermes.HANDBOOK_ABOUT, rows
-        assert rows.get("breadcrumbs:hierarchy") == hermes.HIERARCHY_ABOUT, rows
-        deep = json.loads(skill_view("breadcrumbs:hierarchy"))
-        deep_text = deep.get("content", "")
-        assert deep.get("success") and "pinpoint" in deep_text, sorted(deep)
-        assert "${HERMES_SKILL_DIR}" not in deep_text and os.path.dirname(hermes.HIERARCHY) in deep_text, \
-            "the skill folder was not filled in"
         page = json.loads(skill_view("breadcrumbs:dispatch"))
         text = page.get("content", "")
         cmd = 'cd "%s/../../.." && python3 -m breadcrumbs bc' % os.path.dirname(hermes.HANDBOOK)
@@ -276,94 +268,106 @@ def handbook_check():
         mgr.add_provider(prov)
         mgr.initialize_all(session_id="hb-1", platform="cli", hermes_home=home, agent_context="primary")
         assert 'skill_view("breadcrumbs:dispatch")' in mgr.build_system_prompt()
-        assert "breadcrumbs:hierarchy" not in mgr.build_system_prompt(), "the prompt block names the handbook only"
         mgr.sync_all("where is the walrus kettle", "the walrus kettle is on the top shelf", session_id="hb-1")
         assert mgr.flush_pending(timeout=10), "sync did not drain"
         out = subprocess.run("%s %s 1" % (cmd, prov.session_crumb("hb-1")), shell=True, capture_output=True,
                              text=True)
         assert out.returncode == 0 and "the walrus kettle is on the top shelf" in out.stdout, out.stderr
         mgr.shutdown_all()
-        print("OK: Hermes listed breadcrumbs:dispatch and breadcrumbs:hierarchy, served both with their folder filled in, "
-              "the prompt block named the handbook only, and its bc command showed the session beside the live store")
+        print("OK: Hermes listed breadcrumbs:dispatch, served it with its folder filled in, the prompt block "
+              "named it, and its bc command showed the session beside the live store")
 
 
-def scope_check():
-    """Scopes through Hermes's own code. The memory loader runs the plugin's register(); two chats whose cwd (Hermes's
-    TERMINAL_CWD) is in two git repositories get two memories, each answering for its own repository only, and
-    crumb_find scope "all" reads across. Hermes's slash-command table holds /scope and /viz, and no /island. The
-    home folder and the Hermes home are temp folders; no profile is made and no hermes command runs."""
+def island_check():
+    """Islands through Hermes's own code. The memory loader runs the plugin's register(); model_tools posts
+    tool calls in two codebases, and turn_finalizer's reply transform adds the red offer once (the counts
+    are in <home>/breadcrumbs/islands.json). Hermes's slash-command table holds /island: `/island status`
+    shows the islands and their checks; with a path it gives the codebase its own profile (a path skips the
+    Yes or No question that a bare /island asks). The handoff
+    runs with a recorded Hermes (FakeHermes of tests/test_island.py), not with Hermes's CLI: this check
+    never runs `hermes profile create` or `hermes config set`, and subprocess.run fails while the handoff
+    runs. The home folder and the Hermes root are temp folders."""
     import subprocess
+    import types
+    from pathlib import Path
     from unittest import mock
+    from agent.turn_finalizer import apply_llm_output_transform
     from hermes_cli.plugins import get_plugin_command_handler
+    from model_tools import _emit_post_tool_call_hook
     from plugins.memory import load_memory_provider
-    from breadcrumbs import cli, scope
-    from breadcrumbs_hermes import workdir
-    saved = {k: os.environ.get(k) for k in ("HOME", "HERMES_HOME", "TERMINAL_CWD", "BREADCRUMBS_SCOPE")}
+    from breadcrumbs import cli, island
+    from test_island import FakeHermes  # tests/ is the folder of this script
+    saved = {k: os.environ.get(k) for k in ("HOME", "HERMES_HOME")}
     with tempfile.TemporaryDirectory() as top:  # top is the home folder here
         top = os.path.realpath(top)
         home, a, b = (os.path.join(top, d) for d in (".hermes", "work/a", "work/b"))
         for d in (home, a + "/.git", b + "/.git"):
             os.makedirs(d)
-        os.environ.update(HOME=top, HERMES_HOME=home)
-        os.environ.pop("BREADCRUMBS_SCOPE", None)
+        os.environ.update(HOME=top, HERMES_HOME=home)  # the Hermes CLI of the last step runs in this home too
         try:
             with open(os.path.join(home, "config.yaml"), "w") as f:
                 f.write("memory:\n  provider: breadcrumbs\n")
-            with mock.patch.object(scope, "HOME", top), \
-                    mock.patch.object(subprocess, "run", side_effect=AssertionError("a command ran")):
+            with mock.patch.object(island, "HOME", top):
                 assert cli.main(["install-hermes", home]) in (0, None)
+                assert load_memory_provider("breadcrumbs") is not None
+                for i, root in enumerate([a] * 3 + [b] * 3):
+                    _emit_post_tool_call_hook(function_name="read_file",
+                                              function_args={"path": "%s/f%d.py" % (root, i)},
+                                              result="{}", session_id="is-1")
+                agent = types.SimpleNamespace(session_id="is-1", model="test-model", platform="cli")
+                out, changed, before = apply_llm_output_transform(agent, "Done.", turn_id="t-1")
+                again = apply_llm_output_transform(
+                    types.SimpleNamespace(**dict(vars(agent), _llm_output_transform=None)), "Next.", turn_id="t-2")
+                print(out)
+                assert changed and before == "Done.", (changed, before)
+                assert out.startswith("Done.\n\n> [!CAUTION]\n> \U0001F534 **breadcrumbs: this chat mixes two"), out
+                assert "`~/work/a` (3 calls) and `~/work/b` (3 calls)" in out and "`/island ~/work/b`" in out, out
+                assert "spacegraph" not in out.lower() and "plugins install" not in out, out
+                assert again == ("Next.", False, None), again  # one offer per new codebase, not one per reply
+                chat = island.load(home)["is-1"]
+                assert chat["roots"] == {a: 3, b: 3} and chat["warned"] == [a, b], chat  # no island: both codebases
+                print("OK: Hermes's tool hook found two codebases in one chat, its reply hook added the red offer "
+                      "once, and islands.json holds the counts")
 
-                def chat(repo, session):
-                    os.environ["TERMINAL_CWD"] = repo
-                    mgr = MemoryManager()
-                    mgr.add_provider(load_memory_provider("breadcrumbs"))
-                    mgr.initialize_all(session_id=session, platform="cli", hermes_home=home, agent_context="primary")
-                    return mgr
-
-                def ask(mgr, q, **extra):
-                    T = sorted(t["name"] for t in mgr.get_all_tool_schemas())[0][: -len("crumb")]
-                    return json.loads(mgr.handle_tool_call(T + "crumb_find", dict(q=q, **extra)))["text"]
-
-                ma, mb = chat(a, "sc-a"), chat(b, "sc-b")
-                ma.sync_all("the walrus kettle runs at eighty degrees in repo a", "noted: walrus kettle", session_id="sc-a")
-                mb.sync_all("the flamingo parser reads tokens in repo b", "noted: flamingo parser", session_id="sc-b")
-                assert ma.flush_pending(timeout=10) and mb.flush_pending(timeout=10), "sync did not drain"
-                assert "walrus" in ask(ma, "walrus kettle") and "walrus" not in ask(mb, "walrus kettle")
-                assert "flamingo" in ask(mb, "flamingo parser") and "flamingo" not in ask(ma, "flamingo parser")
-                assert "walrus" in ask(mb, "walrus kettle", scope="all"), "scope all did not read repo a"
-                stores = sorted(s["root"] for s in scope.known(os.path.join(home, "breadcrumbs")))
-                assert stores == sorted([a, b]), stores  # one store for each repository, none for a profile
-                assert not os.path.isdir(os.path.join(home, "profiles")), "a profile was made"
-                print("OK: Hermes's MemoryManager gave two chats in two repositories two memories; crumb_find answers for its own "
-                      "repository, and scope all reads the other")
-
-                handler = get_plugin_command_handler("scope")
-                assert handler is not None, "Hermes has no /scope"
-                assert (handler.__module__, handler.__name__) == (workdir.__name__, "scope_command"), handler
-                os.environ["TERMINAL_CWD"] = a
-                text = handler("")
-                assert "(git repository: " in text and scope.short(a, top) in text and scope.short(b, top) in text, text
-                assert get_plugin_command_handler("island") is None, "Hermes still has /island"
-                assert get_plugin_command_handler("viz") is not None
-                print(text)
+                handler = get_plugin_command_handler("island")
+                assert handler is not None, "Hermes has no /island"
+                assert (handler.__module__, handler.__name__) == (island.__name__, "island_command"), \
+                    "Hermes's /island is not this plugin's command: %r" % (handler,)
+                text = handler("status")
+                assert "This profile (`default`)" in text and "Checks: every island is sound." in text, text
+                recorded = FakeHermes(Path(home))
+                with mock.patch.object(island, "run_hermes", recorded), \
+                        mock.patch.object(subprocess, "run", side_effect=AssertionError("the handoff ran a command")):
+                    made = handler(b)
+                print(made)
+                assert "`~/work/b` has its own profile now: `b`" in made and "`hermes -p b`" in made, made
+                assert [(c[:6], h) for c, h in recorded.calls] == [
+                    (["profile", "create", "b", "--clone-from", "default", "--no-alias"], home),
+                    (["-p", "b", "config", "set", "terminal.cwd", b], os.path.join(home, "profiles", "b"))], recorded.calls
+                text = handler("status")
+                assert "  ~/work/b -> b" in text and "Checks: every island is sound." in text, text
+                assert "breadcrumbs islands of all profiles" in handler("--all")
+            shell = subprocess.run([sys.executable, "-m", "hermes_cli.main", "islands", "status"], capture_output=True,
+                                   text=True, timeout=300, stdin=subprocess.DEVNULL, cwd=top)
+            print("hermes islands status: exit %d, %s" % (shell.returncode, (shell.stdout + shell.stderr).strip()[-300:]))
         finally:
             for k, v in saved.items():
                 if v is None:
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
-        print("OK: Hermes's /scope shows the scope of the chat and the scopes that have a memory; /island is gone")
+        print("OK: Hermes's /island showed the islands and their checks, and its handoff gave the two Hermes "
+              "commands (profile create, config set) to a recorded Hermes, which gave ~/work/b its own profile")
 
 
 def wire_check():
-    """Each model's options on Hermes's OpenAI chat-completions wire (options.py). First, with Hermes's own auth
-    registry as the oracle and its provider profiles (what options.oauth reads): each provider that logs in with
-    OAuth and has a profile keeps the request that Hermes builds, and each API-key provider takes the options. A
-    login with no profile is named: options.oauth cannot see it. Then tests/openai_wire_e2e.py runs one AIAgent turn
-    against a local server, first without the middleware and then with it. It runs as a child process, because
-    AIAgent reads HERMES_HOME when Hermes loads."""
+    """Each model's options on Hermes's OpenAI chat-completions wire (dials.py). First, with Hermes's own auth
+    registry and provider profiles: each provider that logs in with OAuth keeps the request that Hermes builds,
+    and each API-key provider takes the options. Then tests/openai_wire_e2e.py runs one AIAgent turn against a
+    local server, first without the patch and then with it. It runs as a child process, because AIAgent reads
+    HERMES_HOME when Hermes loads."""
     import subprocess
-    from breadcrumbs_hermes import options
+    from breadcrumbs import dials
     from hermes_cli.auth import PROVIDER_REGISTRY
     from providers import get_provider_profile
     with tempfile.TemporaryDirectory() as home:
@@ -372,13 +376,15 @@ def wire_check():
         logins = sorted(k for k, row in rows if str(getattr(row, "auth_type", "")).startswith("oauth"))
         keys = sorted(k for k, row in rows if getattr(row, "auth_type", "") == "api_key")
         assert logins and keys, (logins, keys)
-        unseen = [k for k in logins if get_provider_profile(k) is None]
         for k in logins:
-            assert k in unseen or options.oauth(k), k
+            prof = get_provider_profile(k)
+            assert dials.oauth({"provider_name": k}) and (prof is None or dials.oauth({"provider_profile": prof})), k
         for k in keys:
-            assert not options.oauth(k), k
-        print("OAuth logins that keep Hermes's request: %s; with no profile: %s; API-key providers that take the "
-              "options: %d" % (", ".join(k for k in logins if k not in unseen), ", ".join(unseen) or "none", len(keys)))
+            prof = get_provider_profile(k)
+            assert not dials.oauth({"provider_name": k}), k
+            assert prof is None or not dials.oauth({"provider_profile": prof}), (k, prof.auth_type)
+        print("OAuth logins that keep Hermes's request: %s; API-key providers that take the options: %d" % (
+            ", ".join(logins), len(keys)))
     run = subprocess.run([sys.executable, os.path.join(REPO, "tests", "openai_wire_e2e.py")],
                          capture_output=True, text=True, timeout=240)
     print(run.stdout.strip())
@@ -410,4 +416,4 @@ if __name__ == "__main__":
     ace_check()
     wire_check()
     handbook_check()
-    scope_check()
+    island_check()

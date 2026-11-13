@@ -1,7 +1,6 @@
 """One memory budget for each user turn. With a turn factor above 0, recall, find and open
 share turn_factor x the recall budget. A full turn cuts find to handles and open to the level that
 fits, and the result says so. The default (0) changes nothing."""
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import tempfile
@@ -10,7 +9,7 @@ import unittest
 os.environ["BREADCRUMBS_SUMMARIZE"] = "0"  # no summary model in tests
 
 from breadcrumbs.crumbs import get_crumb  # noqa: E402
-from breadcrumbs_hermes.hermes import BreadcrumbsProvider  # noqa: E402
+from breadcrumbs.hermes import BreadcrumbsProvider  # noqa: E402
 
 LONG = "\n".join("Line %d of the long answer: the kettle, the chain, the cog and the compost." % i for i in range(60))
 

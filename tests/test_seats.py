@@ -1,4 +1,3 @@
-import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import hashlib
 import io
@@ -12,8 +11,7 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli
-from breadcrumbs_hermes import seats
+from breadcrumbs import cli, seats
 from breadcrumbs.crumbs import get_crumb
 from breadcrumbs.history import Refs, log
 from breadcrumbs.index import Index
@@ -407,8 +405,8 @@ class WithSlotTest(unittest.TestCase):
         # THRU: while a slot runs, the recall is the slot's own. The record stays in the store, and
         # breadcrumbs recalls it when it runs alone again (slot --off).
         from unittest import mock
-        from breadcrumbs_hermes import slot as slot_mod
-        from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+        from breadcrumbs import slot as slot_mod
+        from breadcrumbs.hermes import BreadcrumbsProvider
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         os.makedirs(os.path.join(tmp.name, "breadcrumbs"))
@@ -431,7 +429,7 @@ class WithSlotTest(unittest.TestCase):
         self.assertIn(new[0], alone.prefetch("how does the walrus kettle descale?", session_id="s2"))
 
     def test_the_memory_that_breadcrumbs_mirrors_replays_with_its_target_and_without_removals(self):
-        from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+        from breadcrumbs.hermes import BreadcrumbsProvider
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         p = BreadcrumbsProvider()
@@ -446,8 +444,8 @@ class WithSlotTest(unittest.TestCase):
 
     def test_hermes_backup_keeps_the_state_of_the_slot_before_and_after_initialize(self):
         from unittest import mock
-        from breadcrumbs_hermes import slot as slot_mod
-        from breadcrumbs_hermes.hermes import BreadcrumbsProvider
+        from breadcrumbs import slot as slot_mod
+        from breadcrumbs.hermes import BreadcrumbsProvider
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         os.makedirs(os.path.join(tmp.name, "breadcrumbs"))
