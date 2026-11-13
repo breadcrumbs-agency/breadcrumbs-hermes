@@ -356,14 +356,14 @@ def scope_check():
 
 
 def wire_check():
-    """Each model's options on Hermes's OpenAI chat-completions wire (dials.py). First, with Hermes's own auth
-    registry as the oracle and its provider profiles (what dials.oauth reads): each provider that logs in with
+    """Each model's options on Hermes's OpenAI chat-completions wire (options.py). First, with Hermes's own auth
+    registry as the oracle and its provider profiles (what options.oauth reads): each provider that logs in with
     OAuth and has a profile keeps the request that Hermes builds, and each API-key provider takes the options. A
-    login with no profile is named: dials.oauth cannot see it. Then tests/openai_wire_e2e.py runs one AIAgent turn
+    login with no profile is named: options.oauth cannot see it. Then tests/openai_wire_e2e.py runs one AIAgent turn
     against a local server, first without the middleware and then with it. It runs as a child process, because
     AIAgent reads HERMES_HOME when Hermes loads."""
     import subprocess
-    from breadcrumbs_hermes import dials
+    from breadcrumbs_hermes import options
     from hermes_cli.auth import PROVIDER_REGISTRY
     from providers import get_provider_profile
     with tempfile.TemporaryDirectory() as home:
@@ -374,9 +374,9 @@ def wire_check():
         assert logins and keys, (logins, keys)
         unseen = [k for k in logins if get_provider_profile(k) is None]
         for k in logins:
-            assert k in unseen or dials.oauth(k), k
+            assert k in unseen or options.oauth(k), k
         for k in keys:
-            assert not dials.oauth(k), k
+            assert not options.oauth(k), k
         print("OAuth logins that keep Hermes's request: %s; with no profile: %s; API-key providers that take the "
               "options: %d" % (", ".join(k for k in logins if k not in unseen), ", ".join(unseen) or "none", len(keys)))
     run = subprocess.run([sys.executable, os.path.join(REPO, "tests", "openai_wire_e2e.py")],

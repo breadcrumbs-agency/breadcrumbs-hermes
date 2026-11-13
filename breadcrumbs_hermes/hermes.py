@@ -18,7 +18,9 @@ import sqlite3
 import threading
 import time
 
-from . import dials, workdir
+from breadcrumbs import dials
+
+from . import workdir
 from breadcrumbs import finder, handles, ports, tags
 from breadcrumbs.crc32c import BACKEND
 from breadcrumbs.crumbs import Crumb, get_crumb, put_crumb
@@ -124,17 +126,17 @@ def register_handles(ctx):
 
 def register_plugin(ctx, provider):
     """What both entry points (the repository root and the shim) add to Hermes after the provider: its
-    handbook, the middleware of the dials (the options of a model in "models" reach the OpenAI chat-completions
-    wire, dials.py), /scope and /viz (workdir.py), the usage
+    handbook, the middleware of the request options (the options of a model in "models" reach the OpenAI
+    chat-completions wire, options.py), /scope and /viz (workdir.py), the usage
     log (one line of numbers for each model request) and the hook of the family. Each entry point registers the
     provider and ACE itself: Hermes finds a user plugin's memory provider and context engine by the texts
     "register_memory_provider" and "register_context_engine" in its __init__.py (plugins/memory and
     plugins/context_engine in Hermes). Each part goes through a public register_* call of the Hermes context;
     nothing here replaces a class or a function of Hermes."""
-    from . import dials, usage_log, workdir
+    from . import options, usage_log, workdir
     from .ace import _home
     register_handbook(ctx, provider)
-    dials.register(ctx, _home)
+    options.register(ctx, _home)
     workdir.register(ctx, provider)
     usage_log.register(ctx)
     register_handles(ctx)

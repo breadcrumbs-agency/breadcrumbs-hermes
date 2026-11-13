@@ -7,7 +7,8 @@ import sys
 import tempfile
 import unittest
 
-from breadcrumbs_hermes import dials, hermes
+from breadcrumbs import dials
+from breadcrumbs_hermes import hermes
 
 # What Hermes's skill server warns about on every load of a plugin skill (tools/skills_tool_plugin.py, the list of
 # injection patterns): a text that trips it is a defect, so this one keeps clear of them.

@@ -11,7 +11,8 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")
 
-from breadcrumbs_hermes import ace, dials
+from breadcrumbs import dials
+from breadcrumbs_hermes import ace, options
 
 
 def write_config(home, cfg):
@@ -58,14 +59,14 @@ class OptionsTest(unittest.TestCase):
 
     def test_spec_keys_go_on_top_other_samplers_in_extra_body_and_null_removes(self):
         kw = {"model": "m", "messages": [], "temperature": 0.7, "extra_body": {"reasoning": {"effort": "high"}}}
-        dials.apply(kw, {"temperature": 0.3, "seed": 7, "top_k": 20, "min_p": 0.05, "ace_tokens": 290000,
+        options.apply(kw, {"temperature": 0.3, "seed": 7, "top_k": 20, "min_p": 0.05, "ace_tokens": 290000,
                          "extra_body": {"repetition_penalty": 1.1}})
         self.assertEqual(kw["temperature"], 0.3)
         self.assertEqual(kw["seed"], 7)
         self.assertEqual(kw["extra_body"], {"reasoning": {"effort": "high"}, "top_k": 20, "min_p": 0.05,
                                             "repetition_penalty": 1.1})
         self.assertNotIn("ace_tokens", kw)
-        dials.apply(kw, {"temperature": None, "top_k": None, "min_p": None, "repetition_penalty": None,
+        options.apply(kw, {"temperature": None, "top_k": None, "min_p": None, "repetition_penalty": None,
                          "reasoning": None})
         self.assertNotIn("temperature", kw)
         self.assertNotIn("extra_body", kw)
@@ -95,7 +96,7 @@ class MiddlewareTest(unittest.TestCase):
         self.addCleanup(lambda: sys.modules.pop("providers", None) if saved is None
                         else sys.modules.__setitem__("providers", saved))
         self.ctx = Ctx()
-        self.assertTrue(dials.register(self.ctx, lambda: self.tmp.name))
+        self.assertTrue(options.register(self.ctx, lambda: self.tmp.name))
         [(kind, self.mw)] = self.ctx.middleware
         self.assertEqual(kind, "llm_request")
 
@@ -127,7 +128,7 @@ class MiddlewareTest(unittest.TestCase):
         write_config(self.tmp.name, {"models": {"*": {"temperature": 0.42}}})
         for mode in ("anthropic_messages", "codex_responses", None):
             self.assertNotIn("temperature", self.send("m", api_mode=mode), mode)
-        self.assertFalse(dials.register(object(), lambda: self.tmp.name))
+        self.assertFalse(options.register(object(), lambda: self.tmp.name))
 
     def test_a_provider_that_logs_in_with_oauth_keeps_the_request_that_hermes_built(self):
         """Its terms can forbid a changed request (Nov 9 2026): only the open API endpoints change. Hermes's
@@ -350,10 +351,6 @@ class ProviderDialsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             p = self.provider(home)
             self.assertEqual((p.neighbor, p.recall_share, p.turn_factor, p.ctl.budget), (0.3, 0.15, 0.0, 300))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 if __name__ == "__main__":

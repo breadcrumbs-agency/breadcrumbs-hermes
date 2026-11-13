@@ -215,7 +215,7 @@ def register(ctx, provider=None):
     def base_and_info():
         base = os.path.join(current_home(), "breadcrumbs")
         info = getattr(provider, "scope_info", None)
-        from . import dials
+        from breadcrumbs import dials
         return base, info or resolve(base, None, dials.config(base))
 
     def scope_command(raw_args: str = "", session_id: str = "", platform: str = "") -> str:

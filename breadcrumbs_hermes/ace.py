@@ -21,7 +21,7 @@ too (_fold). When the tool calls since the last fold did no work
 (is_work: they only read; read, fold, read again is a loop), the target grows by RATCHET in place of a new
 fold, up to Hermes's threshold. The log keeps the raised target and the gain for a new object.
 TARGET_TOKENS, FOLD_TO, FOLD_CAP and RATCHET are defaults: each model has its own dials in <root>/config.json
-"models" (dials.py), next to its temperature (Ace._dial). Reading grows the target, with no ceiling but
+"models" (breadcrumbs/dials.py), next to its temperature (Engine._dial). Reading grows the target, with no ceiling but
 Hermes's threshold and the model's ace_ceiling (Claude Haiku 5.5: 94,000 built in, from the 100,000 prompt
 tokens where its price steps up); work tapers it back to the band by the fold share (_taper).
 
@@ -51,7 +51,6 @@ try:  # inside Hermes
 except ImportError:  # tests and the CLI
     ContextEngine = object
 
-from . import dials
 from breadcrumbs.ace_core import (  # the engine, and the names that the tests and the other modules of Hermes read
     DIAL_DEFAULTS, Engine, FOLD_CAP, FOLD_TO, GAP, HANDLE, LAYER_HEAD, LEVELS, LOG_BYTES, LOG_RE, LOG_SESS, RATCHET,
     REF_RE, SMALL_TARGET, TARGET_TOKENS, TPB, allocate, cost, crumb_text, is_work, join, layer_cost, logged_counts,
@@ -119,7 +118,7 @@ def _home():
 class Ace(Engine, ContextEngine):
     """The breadcrumb layer as a Hermes context engine (see the module doc): the engine of breadcrumbs.ace_core, with
     Hermes's session and model callbacks."""
-    threshold_percent, protect_first_n, protect_last_n = 0.75, 3, 6
+    protect_first_n, protect_last_n = 3, 6
 
     def update_from_response(self, usage):
         usage = usage or {}
@@ -127,19 +126,9 @@ class Ace(Engine, ContextEngine):
                      int(usage.get("total_tokens") or 0))
 
     def update_model(self, model, context_length, base_url="", api_key="", provider="", api_mode=""):
-        self.model = str(model or "")
-        if self.root:  # a model switch inside a session takes the dials of the new model
-            self._dial()
-        context_length = context_window(self.model, context_length)
-        if ContextEngine is not object:
-            return super().update_model(model, context_length, base_url, api_key, provider, api_mode)
-        self.context_length, self.threshold_tokens = context_length, int(context_length * self.threshold_percent)
-
-    def dial_values(self, root, model):
-        """The dials of model in root, read by dials.py: the top level of <root>/config.json, the built-in entries
-        and each entry of "models" whose glob matches the model. A dial that is missing or not valid has its default."""
-        cfg = dials.config(root)
-        return {key: dials.value(cfg, model, key, {}) for key in DIAL_DEFAULTS}
+        self.use_model(model, context_window(str(model or ""), context_length))
+        if ContextEngine is not object:  # Hermes's own fields of the window (its thresholds per model)
+            super().update_model(model, self.context_length, base_url, api_key, provider, api_mode)
 
     def on_session_start(self, session_id, **kwargs):
         # Hermes's init call names agent.platform; its session-transition call names the session source (run_agent.py,
