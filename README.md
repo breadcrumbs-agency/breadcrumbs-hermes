@@ -84,7 +84,7 @@ programs are not in this release.
 
 ## ONE MEMORY FOR EACH GIT REPOSITORY OR FOLDER, NO PROFILES!
 
-`[PROJECT] THE FOLDER OF THE CHAT → ITS GIT REPOSITORY, OR THE FOLDER ITSELF → ITS OWN MEMORY · /scope SHOWS IT · /viz OPENS IT`
+`[PROJECT] THE FOLDER OF THE CHAT → ITS GIT REPOSITORY, OR THE FOLDER ITSELF → ITS OWN MEMORY · /scope SHOWS IT · /viz OPENS THE WHOLE PROFILE`
 
 A chat's memory is chosen by where the chat works, not by which Hermes profile runs it. breadcrumbs reads the folder
 of the chat, takes its git repository (a linked worktree or a submodule counts as its main repository), a folder
@@ -212,7 +212,7 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
 - **A context engine** (ACE): `hermes config set context.engine breadcrumbs`.
 - **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
   hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
-- **`/viz`**: a slash command that opens the explorer of the memory of the chat's scope, with no command line.
+- **`/viz`**: a slash command that opens the explorer of the whole profile, with no command line: it first imports the profile's `state.db` (read-only, idempotent) so every Hermes chat shows, not only the chats that this plugin has seen, then opens the base store with all of its scopes. Hermes is not a secure portal and its names are not stable, so the explorer sees what the profile holds; the viewers' disclosure level and `novis` decide what it shows. `"viz": "scope"` in `config.json` narrows it to the memory of the chat's scope.
   Hermes's entry in the harness table carries the breadcrumbs mark as its icon (`icon.png`). The explorer does not draw the icon yet
   (the brand bar has no harness picture); `BREADCRUMBS_HARNESS=<name>` names the
   program for a view that was not opened by one.

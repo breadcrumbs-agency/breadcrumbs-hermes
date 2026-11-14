@@ -46,5 +46,74 @@ class VizCommand(unittest.TestCase):
             self.assertIn("did not open: OSError: no port", workdir.open_viz("/h/profiles/alpha/breadcrumbs", hermes="/h"))
 
 
+class VizSeesTheWholeProfile(unittest.TestCase):
+    """/viz opens the profile, not the folder: Hermes is not a secure portal and not a stable namespace, so the explorer sees
+    every chat of state.db (imported first) and every scope; "viz": "scope" in config.json narrows it again."""
+
+    def setUp(self):
+        import json
+        import tempfile
+
+        from tests.test_hermes_ingest import make_db
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = os.path.join(self.tmp.name, "profiles", "alpha")
+        self.base = os.path.join(self.home, "breadcrumbs")
+        self.scope_store = os.path.join(self.base, "scopes", "app-1234abcd")
+        os.makedirs(self.scope_store)
+        make_db(os.path.join(self.home, "state.db"))  # two chats that no store holds yet
+        self.json = json
+
+    def run_viz(self, provider=None):
+        from breadcrumbs_hermes import workdir
+        seen = []
+
+        def fake_run(home, port=viz.PORT, err=None, terminal=True, harness=None):
+            seen.append(home)
+            return 0
+
+        class Ctx:
+            cmds = {}
+
+            def register_command(self, name, fn, **kw):
+                self.cmds[name] = fn
+
+        ctx = Ctx()
+        info = {"store": self.scope_store, "cwd": "/w/app", "root": "/w/app", "kind": "git", "on": True}
+        with mock.patch.object(viz, "run", fake_run), mock.patch.object(workdir, "current_home", return_value=self.home):
+            workdir.register(ctx, mock.Mock(scope_info=info, spec=["scope_info"]))
+            out = ctx.cmds["viz"]("", "s1", "cli")
+        return seen, out
+
+    def sessions_in(self, store):
+        from breadcrumbs.history import Refs
+        return sorted(n for n in Refs(os.path.join(store, "refs")).names() if n.startswith("sess-"))
+
+    def test_the_explorer_opens_the_base_after_importing_state_db(self):
+        self.assertEqual(self.sessions_in(self.base), [])
+        seen, out = self.run_viz()
+        self.assertEqual(seen, [self.base])  # the profile, not the scope of the folder
+        self.assertEqual(self.sessions_in(self.base), ["sess-s1", "sess-s2"])
+        self.assertIn("is open", out)
+
+    def test_the_import_is_idempotent(self):
+        self.run_viz()
+        self.run_viz()
+        self.assertEqual(self.sessions_in(self.base), ["sess-s1", "sess-s2"])
+
+    def test_scope_in_config_narrows_it_to_the_chats_scope(self):
+        with open(os.path.join(self.base, "config.json"), "w", encoding="utf-8") as f:
+            self.json.dump({"viz": "scope"}, f)
+        seen, _ = self.run_viz()
+        self.assertEqual(seen, [self.scope_store])
+
+    def test_a_broken_state_db_still_opens_the_explorer_and_leaves_its_error(self):
+        with open(os.path.join(self.home, "state.db"), "wb") as f:
+            f.write(b"not a database")
+        seen, out = self.run_viz()
+        self.assertEqual(seen, [self.base])
+        self.assertTrue(os.path.getsize(os.path.join(self.base, "ingest.err")) > 0)
+
+
 if __name__ == "__main__":
     unittest.main()
