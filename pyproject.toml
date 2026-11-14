@@ -4,7 +4,7 @@
 # would also build the plugin itself into its environment, so this file declares neither.
 [project]
 name = "breadcrumbs"
-version = "0.4.1"
+version = "0.5.0"
 description = "Content-addressed breadcrumb memory for Hermes: exact provenance, zoom levels 0..1, steady-state context."
 requires-python = ">=3.11"
 license = "MIT"
