@@ -1,4 +1,5 @@
 """The repo is the plugin: the catalog clones it at a pinned commit and Hermes loads the root."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import importlib.util
 import io
 import contextlib
@@ -10,14 +11,14 @@ import types
 import unittest
 from unittest import mock
 
+from breadcrumbs_hermes import adapter as adapter_hermes
 from breadcrumbs import cli
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The hooks that register() adds, in order: the three of the islands (island.register), then the one of the dial
-# family (hermes.register_handles). plugin.yaml lists the same four in provides_hooks.
-HOOKS = ["on_session_start", "post_tool_call", "transform_llm_output", "post_api_request", "post_auxiliary_call",
-         "transform_tool_result"]
+# The hooks that register() adds, in order: the two of the usage log (usage_log.register), then the one of the dial
+# family (hermes.register_handles). plugin.yaml lists the same three in provides_hooks.
+HOOKS = ["post_api_request", "post_auxiliary_call", "transform_tool_result"]
 
 
 class Ctx:
@@ -109,10 +110,21 @@ class RootPluginTest(unittest.TestCase):
     def test_the_root_registers_the_dispatch_handbook_with_the_tools(self):
         ctx = SkillCtx()
         load_root().register(ctx)
-        [(name, path, about)] = ctx.skills
-        self.assertEqual(name, "dispatch")
-        self.assertTrue(os.path.isfile(path), path)
-        self.assertTrue(0 < len(about) <= 60, about)
+        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch", "hierarchy"])
+        for name, path, about in ctx.skills:
+            self.assertTrue(os.path.isfile(path), path)
+            self.assertTrue(0 < len(about) <= 60, about)
+        self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")  # only the handbook is named in the prompt
+
+    def test_a_refused_hierarchy_skill_leaves_the_handbook_in_place(self):
+        class RefusesHierarchy(SkillCtx):
+            def register_skill(self, name, path, description="", frontmatter=None):
+                if name == "hierarchy":
+                    raise ValueError("a clash of names")
+                super().register_skill(name, path, description, frontmatter)
+        ctx = RefusesHierarchy()
+        load_root().register(ctx)
+        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch"])
         self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")
 
     def test_the_handbook_takes_the_name_that_hermes_gave_the_plugin(self):
@@ -135,16 +147,16 @@ class RootPluginTest(unittest.TestCase):
         self.assertEqual(len(ctx.providers), 1)
         self.assertIsNone(ctx.providers[0].handbook)
 
-    def test_the_root_registers_the_island_hooks_where_hermes_has_hooks(self):
+    def test_the_root_registers_the_hooks_where_hermes_has_hooks(self):
         ctx = HookCtx()
         load_root().register(ctx)
         self.assertEqual(ctx.hooks, HOOKS)
 
-    def test_the_root_registers_the_island_slash_command_and_cli_command(self):
+    def test_the_root_registers_the_scope_and_viz_commands_and_no_profile_command(self):
         ctx = CommandCtx()
         load_root().register(ctx)
-        self.assertEqual(ctx.commands, ["island", "viz"])  # /island PATH [NAME]: the handoff, and the checks; /viz: the explorer
-        self.assertEqual(ctx.cli, ["islands"])  # hermes islands island PATH [NAME] | status [--all]
+        self.assertEqual(ctx.commands, ["scope", "viz"])  # /scope: where the chat's memory is; /viz: the explorer
+        self.assertEqual(ctx.cli, [])  # no `hermes islands`: nothing here makes or switches a profile
         self.assertEqual(ctx.hooks, HOOKS)
 
     def test_the_manifest_declares_every_hook_that_the_root_registers(self):
@@ -203,15 +215,22 @@ class RootPluginTest(unittest.TestCase):
 
     def test_hermes_installs_one_package_for_the_plugin_and_does_not_build_it(self):
         """Hermes's installer puts the dependencies of a [project] table into its shared environment
-        (it asks for consent first). The plugin declares one: google-crc32c, on CPython only, so GraalPy
-        builds nothing. With a build system, extras, dependency groups or a uv package flag, Hermes
-        would also build the plugin itself into the environment: it declares none of them."""
+        (it asks for consent first). The plugin declares two: breadcrumbs-common (which brings google-crc32c, on
+        CPython only) and breadcrumbs-spacegraph. With a build system, extras, dependency groups or a uv package flag,
+        Hermes would also build the plugin itself into the environment: it declares none of them."""
         import tomllib
         with open(os.path.join(ROOT, "pyproject.toml"), "rb") as f:
             doc = tomllib.load(f)
         project, uv = doc.get("project", {}), doc.get("tool", {}).get("uv", {})
-        self.assertEqual(project.get("dependencies"),
-                         ["google-crc32c>=1.5,<2; platform_python_implementation == 'CPython'"])
+        if os.path.exists(os.path.join(ROOT, "BUNDLE.json")):
+            # A bundle (breadcrumbs/tools/bundle.py) carries the two layers under lib/: its one dependency is the CRC32C.
+            self.assertEqual(project.get("dependencies"),
+                             ["google-crc32c>=1.5,<2; platform_python_implementation == 'CPython'"])
+            self.assertTrue(os.path.isdir(os.path.join(ROOT, "lib", "breadcrumbs")))
+            self.assertTrue(os.path.isdir(os.path.join(ROOT, "lib", "breadcrumbs_spacegraph")))
+        else:
+            self.assertEqual(project.get("dependencies"),
+                             ["breadcrumbs-common>=0.4.1,<0.5", "breadcrumbs-spacegraph>=0.4.1,<0.5"])
         self.assertNotIn("build-system", doc)
         self.assertFalse(any(project.get("optional-dependencies", {}).values()))
         self.assertFalse(any(doc.get("dependency-groups", {}).values()))
@@ -241,7 +260,7 @@ class InstallShimTest(unittest.TestCase):
         exec(compile(src, path, "exec"), ns)
         ctx = SkillCtx()
         ns["register"](ctx)
-        self.assertEqual([s[0] for s in ctx.skills], ["dispatch"])
+        self.assertEqual([s[0] for s in ctx.skills], ["dispatch", "hierarchy"])
         self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")
 
     def test_the_shim_registers_ace_under_its_own_name_where_the_profile_selects_it(self):
@@ -272,7 +291,7 @@ class InstallShimTest(unittest.TestCase):
         self.assertIn("register_memory_provider", src)  # as for the root, above
         self.assertIn("register_context_engine", src)
 
-    def test_the_shim_registers_the_island_hooks(self):
+    def test_the_shim_registers_the_hooks(self):
         with tempfile.TemporaryDirectory() as home, mock.patch.object(cli, "profile_home", return_value=home):
             self.assertEqual(self.run_cli("install-hermes", "p"), 0)
             path = os.path.join(home, "plugins", "breadcrumbs", "__init__.py")
@@ -284,7 +303,7 @@ class InstallShimTest(unittest.TestCase):
         ns["register"](ctx)
         self.assertEqual(ctx.hooks, HOOKS)
 
-    def test_the_shim_registers_the_island_command(self):
+    def test_the_shim_registers_the_scope_command(self):
         with tempfile.TemporaryDirectory() as home, mock.patch.object(cli, "profile_home", return_value=home):
             self.assertEqual(self.run_cli("install-hermes", "p"), 0)
             path = os.path.join(home, "plugins", "breadcrumbs", "__init__.py")
@@ -294,11 +313,11 @@ class InstallShimTest(unittest.TestCase):
         exec(compile(src, path, "exec"), ns)
         ctx = CommandCtx()
         ns["register"](ctx)
-        self.assertEqual(ctx.commands, ["island", "viz"])
-        self.assertEqual(ctx.cli, ["islands"])
+        self.assertEqual(ctx.commands, ["scope", "viz"])
+        self.assertEqual(ctx.cli, [])
 
     def test_install_hermes_asks_for_no_other_plugin(self):
-        # breadcrumbs alone gives /island, the handoff, the checks and the offer: no second plugin to install.
+        # breadcrumbs alone gives /scope and /viz: no second plugin to install.
         out = io.StringIO()
         with tempfile.TemporaryDirectory() as home, mock.patch.object(cli, "profile_home", return_value=home), \
                 contextlib.redirect_stdout(out):
@@ -309,7 +328,7 @@ class InstallShimTest(unittest.TestCase):
 
     def test_a_shim_for_a_windows_path_compiles_and_keeps_the_path(self):
         repo = "C:\\Users\\someone\\work\\breadcrumbs"  # "\\U" would start an escape in a plain string
-        src = cli.SHIM.format(repo=repo, name="bc", dev=True)
+        src = adapter_hermes.SHIM.format(repo=repo, name="bc", dev=True)
         ns = {}
         exec(compile(src, "shim.py", "exec"), ns)
         self.assertEqual(ns["_REPO"], repo)
@@ -331,7 +350,7 @@ class HandbookTest(unittest.TestCase):
     """The delegation and dispatch handbook goes with the tool descriptions as the plugin skill dispatch."""
 
     def setUp(self):
-        from breadcrumbs import hermes
+        from breadcrumbs_hermes import hermes
         self.hermes = hermes
         with open(hermes.HANDBOOK, encoding="utf-8") as f:
             self.text = f.read()
@@ -351,7 +370,7 @@ class HandbookTest(unittest.TestCase):
     def test_its_bc_command_starts_in_the_folder_that_holds_the_package(self):
         self.assertIn('cd "${HERMES_SKILL_DIR}/../../.." && python3 -m breadcrumbs bc', self.text)
         repo = os.path.join(os.path.dirname(self.hermes.HANDBOOK), "..", "..", "..")
-        self.assertTrue(os.path.isfile(os.path.join(repo, "breadcrumbs", "cli.py")))
+        self.assertTrue(os.path.isfile(os.path.join(repo, "breadcrumbs_hermes", "adapter.py")))
 
     def test_it_has_no_words_that_hermes_flags_as_prompt_injection(self):
         for p in ("ignore previous instructions", "ignore all previous", "you are now", "disregard your",

@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SG = ROOT / "spacegraph"  # the drawing code of the Desktop page (not in the release; its TypeScript interfaces)
 sys.path.insert(0, str(ROOT))
 
-from breadcrumbs import logview  # noqa: E402
+from breadcrumbs_hermes import logview  # noqa: E402
 
 try:
     from hermes_state import SessionDB
@@ -526,7 +526,7 @@ class ReadOnlyTest(LogViewTest):
         self.assertEqual(sha(self.db), self.digest)
 
     def test_logview_imports_only_the_standard_library(self):
-        path = ROOT / "breadcrumbs" / "logview.py"
+        path = ROOT / "breadcrumbs_hermes" / "logview.py"
         for node in ast.walk(ast.parse(path.read_text())):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
                 [node.module or ""] if isinstance(node, ast.ImportFrom) else []

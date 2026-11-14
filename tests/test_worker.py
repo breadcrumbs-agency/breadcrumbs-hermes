@@ -1,6 +1,7 @@
 """The worker receipt: on_delegation records a delegation, on the parent's side, as one "rcpt" crumb of the event
 "worker": the brief that the lead gave the child, the report that came back, the refs that each of them names, and
 the session ids. Hermes calls on_delegation once for each child, before the tool returns."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import os
 import tempfile
 import unittest
@@ -8,11 +9,12 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import hermes, view
+from breadcrumbs_hermes import hermes
+from breadcrumbs_spacegraph import view
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 from breadcrumbs.ingest import leaves
-from breadcrumbs.slot import Slot
+from breadcrumbs_hermes.slot import Slot
 
 BRIEF = "The user said (%s): where is the kettle? Read %s and %s first, then find it."
 REPORT = "It is on the top shelf, see %s. The date 20261110 and the hash deadbeef open nothing."

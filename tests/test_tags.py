@@ -1,5 +1,6 @@
 """Supersede tags: a separate crumb says that crumb OLD is superseded by crumb NEW; a neg tag retracts it.
 The commits of the ref "tags" keep the order; the index keeps the current state."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json
@@ -9,9 +10,10 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import ace, cli, tags
+from breadcrumbs_hermes import ace
+from breadcrumbs import cli, tags
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 from breadcrumbs.history import Refs, log
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import put_turn

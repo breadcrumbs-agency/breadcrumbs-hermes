@@ -7,8 +7,8 @@ import os
 import tempfile
 import unittest
 
-from breadcrumbs import view
-from breadcrumbs.hermes import _ref_name
+from breadcrumbs_spacegraph import view
+from breadcrumbs_hermes.hermes import _ref_name
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

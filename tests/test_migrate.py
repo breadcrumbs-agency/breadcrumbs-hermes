@@ -8,7 +8,7 @@ import unittest
 
 from breadcrumbs import cli, migrate
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs.hermes import _ref_name
+from breadcrumbs_hermes.hermes import _ref_name
 from breadcrumbs.history import Refs
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import leaves

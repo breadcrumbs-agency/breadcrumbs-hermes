@@ -5,6 +5,7 @@ exact text of the child by id. The hook transform_tool_result then adds one hand
 the delegate_task call, in the entry of that child, so the model learns the id. With the dial off nothing of this runs.
 
 The fixture state.db is the one of test_family: a parent p1 and its children c1, c2 and c3 (c3 keeps no turn)."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import tempfile
@@ -15,9 +16,9 @@ os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start th
 
 from breadcrumbs import handles
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs.hermes import BreadcrumbsProvider, register_handles
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider, register_handles
 from breadcrumbs.share import export_car, read_car
-from breadcrumbs.slot import Slot
+from breadcrumbs_hermes.slot import Slot
 from test_family import make_state_db
 
 KETTLE, SHELF = "measure the kettle", "check the shelf"  # the goals of c1 and c2 in the fixture

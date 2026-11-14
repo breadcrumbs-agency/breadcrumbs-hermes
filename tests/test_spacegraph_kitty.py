@@ -16,8 +16,9 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli, kitty  # noqa: E402
-from breadcrumbs import spacegraph_kitty as sk  # noqa: E402
+from breadcrumbs import cli
+from breadcrumbs_spacegraph import kitty  # noqa: E402
+from breadcrumbs_spacegraph import spacegraph_kitty as sk  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APC = re.compile(r"\x1b_G([^;]*);([^\x1b]*)\x1b\\")
@@ -1091,7 +1092,7 @@ class Program(AppCase):
         self.assertGreater(len(set(raw[1::97])), 4)
 
     def test_the_command_line_passes_the_motion_flag_on(self):
-        with mock.patch("breadcrumbs.spacegraph_kitty.SpaceGraphKitty") as klass:
+        with mock.patch("breadcrumbs_spacegraph.spacegraph_kitty.SpaceGraphKitty") as klass:
             self.assertEqual(cli.main(["--home", store(), "spacegraph", "--motion", "0"]), 0)
             self.assertEqual(klass.call_args.kwargs["motion"], "0")
             cli.main(["--home", store(), "spacegraph"])

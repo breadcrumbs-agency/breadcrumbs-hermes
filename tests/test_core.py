@@ -1,5 +1,6 @@
 """core: one verb table behind MCP (stdio), a socket (Unix, TCP) and A2A. The transports are thin; the cases below
 check the core once and each transport's framing once."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import shutil
@@ -12,7 +13,7 @@ import urllib.request
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
 from breadcrumbs import a2a, core, mcp, sock
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 
 TEA = ("how long should green tea steep in the kettle water", "steep green tea two minutes; kettle water near 80 C")
 BIKE = ("my bike chain skips on the small cog", "replace the worn chain and check every cog for wear")
@@ -39,8 +40,7 @@ class CoreCase(unittest.TestCase):
 
 class Verbs(CoreCase):
     def test_the_harnesses_are_told_apart_by_their_names(self):
-        names = {"claude-code": "claude-code", "codex-mcp-client": "codex", "opencode": "opencode",
-                 "Hermes Agent": "hermes", "curl": "unknown", None: "unknown"}
+        names = {"Hermes Agent": "hermes", "curl": "unknown", None: "unknown"}  # the other harnesses: their own folders
         for name, key in names.items():
             self.assertEqual(core.identify(name), key, name)
 
@@ -70,12 +70,12 @@ class Verbs(CoreCase):
             self.assertEqual(c.exception.code, code, verb)
 
     def test_health_counts_the_calls_of_each_harness(self):
-        self.core.call("stores", harness="codex")
-        self.core.call("stores", harness="codex")
-        self.core.call("stores", harness="claude-code")
+        self.core.call("stores", harness="hermes")
+        self.core.call("stores", harness="hermes")
+        self.core.call("stores", harness="nobody")
         self.core.call("stores")
         h = self.core.call("health")
-        self.assertEqual(h["calls"], {"codex": 2, "claude-code": 1, "unknown": 2})  # the health call counts itself
+        self.assertEqual(h["calls"], {"hermes": 2, "unknown": 3})  # the health call counts itself
         self.assertEqual(h["stores"], ["default", "alpha"])
 
     def test_the_view_stays_open_between_calls(self):
@@ -96,14 +96,14 @@ class Mcp(CoreCase):
 
     def test_initialize_names_the_harness_and_the_tools_are_the_verbs(self):
         s = mcp.Session(self.core)
-        init = self.talk(s, "initialize", {"protocolVersion": "2025-06-18", "clientInfo": {"name": "codex-mcp-client"}})
+        init = self.talk(s, "initialize", {"protocolVersion": "2025-06-18", "clientInfo": {"name": "Hermes Agent"}})
         self.assertEqual(init["result"]["serverInfo"]["name"], "breadcrumbs")
         self.assertIsNone(s.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
         tools = self.talk(s, "tools/list")["result"]["tools"]
         self.assertEqual([t["name"] for t in tools], list(core.VERBS))
         self.assertEqual(tools[0]["inputSchema"]["required"], ["q"])
         self.talk(s, "tools/call", {"name": "stores"})
-        self.assertEqual(self.core.call("health")["calls"], {"codex": 1, "unknown": 1})
+        self.assertEqual(self.core.call("health")["calls"], {"hermes": 1, "unknown": 1})
 
     def test_open_returns_the_text_and_a_refusal_is_a_tool_error(self):
         s = mcp.Session(self.core)
@@ -125,9 +125,9 @@ class Mcp(CoreCase):
 
 class Socket(CoreCase):
     def test_a_line_in_a_line_out_and_the_token_guards_tcp(self):
-        line = json.dumps({"id": 7, "verb": "stores", "harness": "opencode"})
+        line = json.dumps({"id": 7, "verb": "stores", "harness": "hermes"})
         self.assertTrue(sock.handle_line(self.core, line)["ok"])
-        self.assertEqual(self.core.call("health")["calls"], {"opencode": 1, "unknown": 1})
+        self.assertEqual(self.core.call("health")["calls"], {"hermes": 1, "unknown": 1})
         self.assertEqual(sock.handle_line(self.core, line, key="secret")["error"]["code"], "token")
         self.assertTrue(sock.handle_line(self.core, line[:-1] + ', "k": "secret"}', key="secret")["ok"])
         self.assertEqual(sock.handle_line(self.core, "[1]")["error"]["code"], "bad_request")
@@ -165,12 +165,12 @@ class A2a(CoreCase):
         return a2a.rpc(self.core, {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {"message": msg}})
 
     def test_a_text_message_and_a_data_message_complete_a_task(self):
-        t = self.send([{"kind": "text", "text": "find bike chain"}], harness="claude-code")["result"]
+        t = self.send([{"kind": "text", "text": "find bike chain"}], harness="hermes")["result"]
         self.assertEqual(t["status"]["state"], "completed")
         self.assertEqual(t["artifacts"][0]["parts"][0]["data"]["groups"][0]["store"], "alpha")
         d = self.send([{"kind": "data", "data": {"verb": "open", "params": {"id": self.tea}}}])["result"]
         self.assertIn("kettle", d["artifacts"][0]["parts"][0]["data"]["text"])
-        self.assertEqual(self.core.call("health")["calls"], {"claude-code": 1, "unknown": 2})
+        self.assertEqual(self.core.call("health")["calls"], {"hermes": 1, "unknown": 2})
 
     def test_a_refusal_is_a_failed_task_and_a_bad_request_is_an_rpc_error(self):
         t = self.send([{"kind": "text", "text": "open ffffffff"}])["result"]

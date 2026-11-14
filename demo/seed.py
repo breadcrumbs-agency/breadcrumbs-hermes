@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # no summaries: the demo needs no model
-from breadcrumbs.hermes import BreadcrumbsProvider  # noqa: E402
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider  # noqa: E402
 
 PAST = {
     "tea": [("The kettle boils too fast and my green tea turns bitter.",

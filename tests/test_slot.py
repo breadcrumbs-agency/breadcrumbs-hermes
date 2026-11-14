@@ -1,6 +1,7 @@
 """A slot: another Hermes memory provider on top of breadcrumbs (a pass-through). Hermes runs one external
 memory provider; with a slot, breadcrumbs is that provider, and each call goes THRU it to the other one:
 Hermes sees the other provider's answers as before, and breadcrumbs keeps a copy under it."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import json
@@ -13,9 +14,10 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli, hermes, slot as slot_mod
+from breadcrumbs_hermes import adapter as adapter_hermes, hermes, slot as slot_mod
+from breadcrumbs import cli
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 
 
 class FakeSlot:
@@ -484,7 +486,7 @@ class SlotTest(unittest.TestCase):
 
 class SlotCommandTest(unittest.TestCase):
     """python -m breadcrumbs slot PROFILE [PROVIDER] [--off]: the pass-through installer. Hermes's config is a
-    fake here (cli.hermes_config); the profile home is a temp folder."""
+    fake here (adapter_hermes.hermes_config); the profile home is a temp folder."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -500,7 +502,7 @@ class SlotCommandTest(unittest.TestCase):
 
     def run_cli(self, *argv):
         out = io.StringIO()
-        with mock.patch.object(cli, "hermes_config", self.fake_hermes), \
+        with mock.patch.object(adapter_hermes, "hermes_config", self.fake_hermes), \
                 mock.patch.object(cli, "profile_home", lambda profile: self.tmp.name), \
                 contextlib.redirect_stdout(out):
             code = cli.main(["slot", *argv])
@@ -551,9 +553,9 @@ class SlotCommandTest(unittest.TestCase):
         # `hermes config get` exits 1 with "Config key not set: KEY" when the key is not set
         done = subprocess.CompletedProcess([], 1, stdout="", stderr="Config key not set: memory.provider\n")
         with mock.patch.object(cli.subprocess, "run", lambda *a, **k: done):
-            self.assertEqual(cli.hermes_config("work", "get", "memory.provider"), "")
+            self.assertEqual(adapter_hermes.hermes_config("work", "get", "memory.provider"), "")
             with self.assertRaises(SystemExit):
-                cli.hermes_config("work", "set", "memory.provider", "x")  # a failed set still stops
+                adapter_hermes.hermes_config("work", "set", "memory.provider", "x")  # a failed set still stops
 
 
 if __name__ == "__main__":

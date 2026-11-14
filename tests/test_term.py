@@ -1,4 +1,5 @@
 """breadcrumbs/kitty.py (the Kitty graphics protocol escapes that Kitty and Ghostty read) and `term`."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import base64
 import contextlib
 import io
@@ -11,7 +12,8 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli, kitty
+from breadcrumbs import cli
+from breadcrumbs_spacegraph import kitty
 
 APC = re.compile(r"\x1b_G([^;]*);([^\x1b]*)\x1b\\")
 
@@ -123,8 +125,8 @@ class Term(unittest.TestCase):
         self.assertTrue(out.endswith(kitty.clear() + "\x1b[?25h"))
 
     def test_with_no_url_it_serves_the_store_and_shows_the_page_with_its_token(self):
-        from breadcrumbs import view
-        from breadcrumbs.hermes import BreadcrumbsProvider
+        from breadcrumbs_spacegraph import view
+        from breadcrumbs_hermes.hermes import BreadcrumbsProvider
         p = BreadcrumbsProvider()
         p.initialize("s1", hermes_home=self.tmp.name, platform="cli", agent_context="primary")
         p.sync_turn("how long should green tea steep", "two minutes", session_id="s1")

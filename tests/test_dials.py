@@ -1,5 +1,6 @@
 """The dials of each model (dials.py): target, fold share, fold cap and ratchet step reach the engine, and each
 model's request options reach the OpenAI chat-completions wire."""
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import sys
@@ -10,7 +11,8 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")
 
-from breadcrumbs import ace, dials
+from breadcrumbs import dials
+from breadcrumbs_hermes import ace, options
 
 
 def write_config(home, cfg):
@@ -57,96 +59,90 @@ class OptionsTest(unittest.TestCase):
 
     def test_spec_keys_go_on_top_other_samplers_in_extra_body_and_null_removes(self):
         kw = {"model": "m", "messages": [], "temperature": 0.7, "extra_body": {"reasoning": {"effort": "high"}}}
-        dials.apply(kw, {"temperature": 0.3, "seed": 7, "top_k": 20, "min_p": 0.05, "ace_tokens": 290000,
+        options.apply(kw, {"temperature": 0.3, "seed": 7, "top_k": 20, "min_p": 0.05, "ace_tokens": 290000,
                          "extra_body": {"repetition_penalty": 1.1}})
         self.assertEqual(kw["temperature"], 0.3)
         self.assertEqual(kw["seed"], 7)
         self.assertEqual(kw["extra_body"], {"reasoning": {"effort": "high"}, "top_k": 20, "min_p": 0.05,
                                             "repetition_penalty": 1.1})
         self.assertNotIn("ace_tokens", kw)
-        dials.apply(kw, {"temperature": None, "top_k": None, "min_p": None, "repetition_penalty": None,
+        options.apply(kw, {"temperature": None, "top_k": None, "min_p": None, "repetition_penalty": None,
                          "reasoning": None})
         self.assertNotIn("temperature", kw)
         self.assertNotIn("extra_body", kw)
 
 
 
-class InstallTest(unittest.TestCase):
-    """install() wraps the transport's build: a stand-in with Hermes's names and its legacy behavior (no
-    temperature from the caller)."""
+class MiddlewareTest(unittest.TestCase):
+    """register() adds Hermes's public llm_request middleware: it gets the provider kwargs that Hermes built (here
+    a stand-in of them) with the model, the provider and the api_mode, and returns {"request": ...} or None."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-        class ChatCompletionsTransport:
-            def build_kwargs(self, model, messages, tools=None, **params):
-                return {"model": model, "messages": messages, "timeout": params.get("timeout")}
+        class Ctx:
+            def __init__(self):
+                self.middleware = []
 
-        mod = types.ModuleType("agent.transports.chat_completions")
-        setattr(mod, "ChatCompletionsTransport", ChatCompletionsTransport)
-        names = ("agent", "agent.transports", "agent.transports.chat_completions")
-        saved = {n: sys.modules.get(n) for n in names}
-        sys.modules.update({"agent": types.ModuleType("agent"), "agent.transports": types.ModuleType("agent.transports"),
-                            "agent.transports.chat_completions": mod})
+            def register_middleware(self, kind, callback):
+                self.middleware.append((kind, callback))
 
-        def restore():
-            for n in names:
-                m = saved[n]
-                if m is None:
-                    sys.modules.pop(n, None)
-                else:
-                    sys.modules[n] = m
-        self.addCleanup(restore)
-        self.T = ChatCompletionsTransport
+        self.profiles = {}  # Hermes's provider profiles by name (the public module providers): none here
+        providers = types.ModuleType("providers")
+        setattr(providers, "get_provider_profile", lambda name: self.profiles.get(name))
+        saved = sys.modules.get("providers")
+        sys.modules["providers"] = providers
+        self.addCleanup(lambda: sys.modules.pop("providers", None) if saved is None
+                        else sys.modules.__setitem__("providers", saved))
+        self.ctx = Ctx()
+        self.assertTrue(options.register(self.ctx, lambda: self.tmp.name))
+        [(kind, self.mw)] = self.ctx.middleware
+        self.assertEqual(kind, "llm_request")
 
-    def test_the_options_of_the_model_reach_the_request_and_a_second_install_does_not_wrap_twice(self):
+    def send(self, model, api_mode="chat_completions", provider="custom", **request):
+        """The request that the provider gets: the middleware's, or Hermes's own when it returns None."""
+        request = dict({"model": model, "messages": [], "timeout": None}, **request)
+        out = self.mw(request=dict(request), original_request=request, model=model, provider=provider,
+                      api_mode=api_mode, session_id="s1")
+        return out["request"] if out else request
+
+    def test_the_options_of_the_model_reach_the_request(self):
         write_config(self.tmp.name, {"models": {"local-*": {"temperature": 0.42, "top_k": 20}}})
-        self.assertTrue(dials.install(lambda: self.tmp.name))
-        wrapped = self.T.build_kwargs
-        self.assertTrue(dials.install(lambda: self.tmp.name))
-        self.assertIs(self.T.build_kwargs, wrapped)
-        kw = self.T().build_kwargs(model="local-nemo", messages=[{"role": "user", "content": "hi"}], tools=None,
-                                   timeout=30)
+        kw = self.send("local-nemo", timeout=30)
         self.assertEqual((kw["temperature"], kw["extra_body"], kw["timeout"]), (0.42, {"top_k": 20}, 30))
-        self.assertEqual(self.T().build_kwargs("other", []), {"model": "other", "messages": [], "timeout": None})
+        self.assertEqual(self.send("other"), {"model": "other", "messages": [], "timeout": None})
+        out = self.mw(request={"model": "local-nemo"}, model="local-nemo", provider="custom", api_mode="chat_completions")
+        self.assertEqual((out["source"], out["request"]["temperature"]), ("breadcrumbs", 0.42))
 
     def test_an_edit_applies_to_the_next_request_and_a_bad_file_changes_nothing(self):
-        dials.install(lambda: self.tmp.name)
         write_config(self.tmp.name, {"models": {"*": {"temperature": 0.5}}})
-        self.assertEqual(self.T().build_kwargs("m", [])["temperature"], 0.5)
+        self.assertEqual(self.send("m")["temperature"], 0.5)
         write_config(self.tmp.name, {"models": {"*": {"temperature": 0.9}}})
-        self.assertEqual(self.T().build_kwargs("m", [])["temperature"], 0.9)
+        self.assertEqual(self.send("m")["temperature"], 0.9)
         with open(os.path.join(self.tmp.name, "breadcrumbs", "config.json"), "w") as f:
             f.write("{not json")
-        self.assertNotIn("temperature", self.T().build_kwargs("m", []))
+        self.assertNotIn("temperature", self.send("m"))
 
-    def test_outside_hermes_install_does_nothing(self):
-        sys.modules["agent.transports.chat_completions"] = None  # type: ignore[assignment]  # the import fails
-        self.assertFalse(dials.install(lambda: self.tmp.name))
+    def test_another_wire_or_a_hermes_with_no_middleware_keeps_the_request(self):
+        write_config(self.tmp.name, {"models": {"*": {"temperature": 0.42}}})
+        for mode in ("anthropic_messages", "codex_responses", None):
+            self.assertNotIn("temperature", self.send("m", api_mode=mode), mode)
+        self.assertFalse(options.register(object(), lambda: self.tmp.name))
 
     def test_a_provider_that_logs_in_with_oauth_keeps_the_request_that_hermes_built(self):
-        """Its terms can forbid a changed request (Nov 9 2026): only the open API endpoints change. The
-        profile names its auth type; a provider with no profile (Hermes's legacy path) has a row in the auth
-        registry of hermes_cli.auth."""
-        auth = types.ModuleType("hermes_cli.auth")
-        setattr(auth, "PROVIDER_REGISTRY", {"oldlogin": types.SimpleNamespace(auth_type="oauth_device_code"),
-                                            "oldkey": types.SimpleNamespace(auth_type="api_key")})
-        saved = {n: sys.modules.get(n) for n in ("hermes_cli", "hermes_cli.auth")}
-        sys.modules.update({"hermes_cli": types.ModuleType("hermes_cli"), "hermes_cli.auth": auth})
-        self.addCleanup(lambda: [sys.modules.pop(n, None) if m is None else sys.modules.__setitem__(n, m)
-                                 for n, m in saved.items()])
-        write_config(self.tmp.name, {"models": {"*": {"temperature": 0.42}}})
-        dials.install(lambda: self.tmp.name)
+        """Its terms can forbid a changed request (Nov 9 2026): only the open API endpoints change. Hermes's
+        provider profile (the public module providers) names its auth type."""
         P = types.SimpleNamespace
-        for params in ({"provider_profile": P(name="nous", auth_type="oauth_device_code")},
-                       {"provider_profile": P(name="qwen-oauth", auth_type="oauth_external")},
-                       {"provider_profile": P(name="m", auth_type="api_key", registry_auth_type="oauth_minimax")},
-                       {"provider_name": "OldLogin"}):
-            self.assertNotIn("temperature", self.T().build_kwargs("m", [], **params), params)
-        for params in ({"provider_profile": P(name="openrouter", auth_type="api_key")}, {"provider_name": "oldkey"},
-                       {"provider_name": "custom"}, {}):
-            self.assertEqual(self.T().build_kwargs("m", [], **params)["temperature"], 0.42, params)
+        self.profiles.update({"nous": P(name="nous", auth_type="oauth_device_code"),
+                              "qwen-oauth": P(name="qwen-oauth", auth_type="oauth_external"),
+                              "m": P(name="m", auth_type="api_key", registry_auth_type="oauth_minimax"),
+                              "openrouter": P(name="openrouter", auth_type="api_key")})
+        write_config(self.tmp.name, {"models": {"*": {"temperature": 0.42}}})
+        for prov in ("nous", "Qwen-OAuth", "m"):
+            self.assertNotIn("temperature", self.send("m", provider=prov), prov)
+        for prov in ("openrouter", "custom", "", None):
+            self.assertEqual(self.send("m", provider=prov)["temperature"], 0.42, prov)
 
 
 class DialTest(unittest.TestCase):
@@ -259,7 +255,7 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(dials.value(cfg, "claude-haiku-5-5", "ace_ceiling", {}), 0)
 
     def test_a_value_that_is_not_valid_gives_the_default_and_is_named(self):
-        cfg = {"ace_ratchet": 9.0, "ace_tokens": True, "intercept": "yes", "turn_factor": -1, "ace_diverse": 2.5}
+        cfg = {"ace_ratchet": 9.0, "ace_tokens": True, "family": "yes", "turn_factor": -1, "ace_diverse": 2.5}
         rows = {r.dial.key: r for r in dials.resolve(cfg, None, {})}
         for key in cfg:
             self.assertEqual((rows[key].value, rows[key].source), (dials.BY_KEY[key].default, "default"), key)
@@ -308,7 +304,7 @@ class ProviderDialsTest(unittest.TestCase):
     the budget it saved."""
 
     def provider(self, home, session="s1"):
-        from breadcrumbs.hermes import BreadcrumbsProvider
+        from breadcrumbs_hermes.hermes import BreadcrumbsProvider
         p = BreadcrumbsProvider()
         p.initialize(session, hermes_home=home, platform="cli", agent_context="primary")
         self.addCleanup(p.shutdown)
@@ -355,10 +351,6 @@ class ProviderDialsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             p = self.provider(home)
             self.assertEqual((p.neighbor, p.recall_share, p.turn_factor, p.ctl.budget), (0.3, 0.15, 0.0, 300))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 if __name__ == "__main__":

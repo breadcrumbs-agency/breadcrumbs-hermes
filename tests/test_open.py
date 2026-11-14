@@ -3,6 +3,7 @@
 Subprocess and webbrowser are mocked: no window and no browser opens, and no app has to be installed. The token of
 a test home is read from its own view.token at run time; it is never printed.
 """
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import contextlib
 import io
 import os
@@ -17,8 +18,9 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli, launch, term, view
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs import cli, ports
+from breadcrumbs_spacegraph import launch, term, view
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 
 # The start of the command line for each (macOS?, app); `term` on the home follows.
 HEAD = {
@@ -84,7 +86,7 @@ class Base(unittest.TestCase):
 class Windows(Base):
     def setUp(self):
         super().setUp()
-        self.term = ["env", "PYTHONPATH=" + launch.REPO, sys.executable, "-m", "breadcrumbs", "--home", self.home,
+        self.term = ["env", "PYTHONPATH=" + ports.pythonpath(), sys.executable, "-m", "breadcrumbs", "--home", self.home,
                      "term"]
 
     def test_print_shows_the_command_line_for_each_app_on_macos_and_linux_and_runs_nothing(self):
@@ -102,7 +104,7 @@ class Windows(Base):
     def test_a_set_PYTHONPATH_stays_in_the_command_of_the_window(self):
         os.environ["PYTHONPATH"] = "/somewhere"
         code, out, err = self.run_open("kitty", "--print")
-        self.assertIn("PYTHONPATH=" + launch.REPO + os.pathsep + "/somewhere", shlex.split(out))
+        self.assertIn("PYTHONPATH=" + ports.pythonpath("/somewhere"), shlex.split(out))
 
     def test_a_run_on_macos_starts_the_app_with_open(self):
         for app in HEAD_APPS:

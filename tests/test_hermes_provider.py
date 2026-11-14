@@ -1,3 +1,4 @@
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
 import sqlite3
@@ -7,7 +8,7 @@ import unittest
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
 from breadcrumbs.crumbs import get_crumb
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 from breadcrumbs.ingest import leaves
 
 

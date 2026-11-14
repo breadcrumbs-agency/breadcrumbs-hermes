@@ -1,3 +1,4 @@
+import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import base64
 import contextlib
 import io
@@ -14,7 +15,7 @@ os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start th
 
 from breadcrumbs import cli, hive
 from breadcrumbs.crumbs import Crumb, put_crumb
-from breadcrumbs.hermes import BreadcrumbsProvider
+from breadcrumbs_hermes.hermes import BreadcrumbsProvider
 from breadcrumbs.history import Refs
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import put_turn
