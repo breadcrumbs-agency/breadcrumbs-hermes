@@ -4,7 +4,7 @@
 # build the plugin itself into that environment, so this file declares neither (tests/test_plugin_entry.py).
 [project]
 name = "breadcrumbs-hermes"
-version = "0.4.1"
+version = "0.5.0"
 description = "Content-addressed breadcrumb memory for Hermes: exact provenance, zoom levels 0..1, steady-state context."
 requires-python = ">=3.11"
 license = "MIT"
