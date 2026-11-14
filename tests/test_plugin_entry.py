@@ -16,9 +16,10 @@ from breadcrumbs import cli
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The hooks that register() adds, in order: the two of the usage log (usage_log.register), then the one of the dial
-# family (hermes.register_handles). plugin.yaml lists the same three in provides_hooks.
-HOOKS = ["post_api_request", "post_auxiliary_call", "transform_tool_result"]
+# The hooks that register() adds, in order: the explorer at the start of a terminal chat (workdir.register), the two of
+# the usage log (usage_log.register), then the one of the dial family (hermes.register_handles). plugin.yaml lists
+# the same four in provides_hooks.
+HOOKS = ["on_session_start", "post_api_request", "post_auxiliary_call", "transform_tool_result"]
 
 
 class Ctx:

@@ -115,5 +115,73 @@ class VizSeesTheWholeProfile(unittest.TestCase):
         self.assertTrue(os.path.getsize(os.path.join(self.base, "ingest.err")) > 0)
 
 
+class ExplorerAtStart(unittest.TestCase):
+    """A chat that starts in a terminal opens the explorer of the profile once per process (the hook on_session_start)."""
+
+    def setUp(self):
+        import tempfile
+
+        from breadcrumbs_hermes import workdir
+        from tests.test_hermes_ingest import make_db
+        self.workdir = workdir
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = os.path.join(self.tmp.name, "profiles", "alpha")
+        self.base = os.path.join(self.home, "breadcrumbs")
+        self.scope_store = os.path.join(self.base, "scopes", "app-1234abcd")
+        os.makedirs(self.scope_store)
+        make_db(os.path.join(self.home, "state.db"))
+        workdir._viz_started = False
+        self.addCleanup(setattr, workdir, "_viz_started", False)
+
+    def hook(self):
+        class Ctx:
+            hooks = {}
+
+            def register_hook(self, name, fn, **kw):
+                self.hooks[name] = fn
+
+            def register_command(self, *a, **kw):
+                pass
+
+        ctx = Ctx()
+        info = {"store": self.scope_store, "cwd": "/w/app", "root": "/w/app", "kind": "git", "on": True}
+        with mock.patch.object(self.workdir, "current_home", return_value=self.home):
+            self.workdir.register(ctx, mock.Mock(scope_info=info, spec=["scope_info"]))
+        return ctx.hooks["on_session_start"]
+
+    def fire(self, platform, sid="s1"):
+        import threading
+        calls, done = [], threading.Event()
+
+        def fake_autostart(home, env=os.environ, err=None, harness=None):
+            calls.append((home, harness))
+            done.set()
+
+        hook = self.hook()
+        with mock.patch.object(viz, "autostart", fake_autostart), \
+                mock.patch.object(self.workdir, "current_home", return_value=self.home):
+            hook(session_id=sid, platform=platform)
+            hook(session_id=sid, platform=platform)  # the second chat of the process
+            done.wait(2)
+        return calls
+
+    def test_a_terminal_chat_opens_the_explorer_of_the_profile_once(self):
+        self.assertEqual(self.fire("cli"), [(self.base, "hermes")])
+        self.assertEqual(sorted(n for n in os.listdir(os.path.join(self.base, "refs")) if n.startswith("sess-")), ["sess-s1", "sess-s2"])
+
+    def test_a_messaging_chat_opens_nothing(self):
+        self.assertEqual(self.fire("telegram"), [])
+
+    def test_a_no_vis_chat_opens_nothing(self):
+        with mock.patch.object(self.workdir.novis, "blocked", return_value="this chat opted out"):
+            self.assertEqual(self.fire("cli"), [])
+
+    def test_the_hook_is_in_the_manifest(self):
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(here, "plugin.yaml"), encoding="utf-8") as f:
+            self.assertIn("on_session_start", [l for l in f if l.startswith("provides_hooks")][0])
+
+
 if __name__ == "__main__":
     unittest.main()

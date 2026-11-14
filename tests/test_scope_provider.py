@@ -143,7 +143,7 @@ class ScopedProviderTest(unittest.TestCase):
         self.assertIn('scope "up"', workdir.command(base, a.scope_info, "up"))
         self.assertTrue(workdir.command(base, a.scope_info, "bogus").startswith("usage:"))
 
-    def test_the_scopes_register_a_command_and_no_hook_cli_or_profile(self):
+    def test_the_scopes_register_a_command_and_the_start_hook_and_no_cli_or_profile(self):
         calls = []
 
         class Ctx:
@@ -157,7 +157,7 @@ class ScopedProviderTest(unittest.TestCase):
                 calls.append("cli")
 
         workdir.register(Ctx(), None)
-        self.assertEqual(calls, ["scope", "viz"])
+        self.assertEqual(calls, ["hook", "scope", "viz"])  # the hook: the explorer at the start of a terminal chat
 
     def test_a_scope_may_override_the_default_config(self):
         base = os.path.join(self.hermes, "breadcrumbs")

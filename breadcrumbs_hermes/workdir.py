@@ -24,7 +24,10 @@ from typing import List, Optional, Tuple
 
 from breadcrumbs import scope
 
+from . import novis
+
 LOCAL_SURFACES = ("cli", "tui", "desktop", "acp", "local")
+TERMINAL_SURFACES = ("cli", "tui")  # a chat that starts in a terminal opens the explorer itself (start_viz)
 VIZ_HELP = ("open the explorer of this profile: every Hermes chat and every scope, imported from state.db first "
             "(the map, graph, Gantt and Venn; read-only)")
 VIZ_DISCLAIMER = ("`/viz` is not for messaging chats (%s). It opens a page on the machine that runs Hermes. "
@@ -248,10 +251,35 @@ def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> 
     return "breadcrumbs: the explorer of %s is open in %s (read-only, on this machine)." % (scope.short(store), where)
 
 
+_viz_started = False
+
+
+def start_viz(base: str, autostart=None) -> bool:
+    """A chat starts in a terminal: open the explorer of the profile once per process (viz.autostart: a split in cmux or
+    tmux, else the OS opens it; BREADCRUMBS_VIZ=0 turns it off). It runs in a thread, because a first server start can take
+    seconds, and never raises. True when it started the thread."""
+    global _viz_started
+    if _viz_started:
+        return False
+    _viz_started = True
+
+    def work():
+        try:
+            from breadcrumbs import viz
+            (autostart or viz.autostart)(base, harness=HARNESS)
+        except Exception:
+            logging.getLogger(__name__).debug("breadcrumbs viz: autostart failed", exc_info=True)
+
+    import threading
+    threading.Thread(target=work, name="breadcrumbs-viz-autostart", daemon=True).start()
+    return True
+
+
 # -- the entry point ---------------------------------------------------------------------------------------------
 def register(ctx, provider=None):
-    """/scope and /viz, each where the Hermes context has register_command. No hook, no CLI command, no profile."""
-    if not hasattr(ctx, "register_command"):
+    """/scope and /viz, each where the Hermes context has register_command, and the explorer at the start of a terminal
+    chat, where it has register_hook. No CLI command, no profile."""
+    if not hasattr(ctx, "register_command") and not hasattr(ctx, "register_hook"):
         return
 
     def base_and_info():
@@ -271,6 +299,20 @@ def register(ctx, provider=None):
         import_history(current_home(), provider)
         return open_viz(viz_store(base, info), session_id)
 
-    ctx.register_command("scope", scope_command, description=SCOPE_HELP, args_hint="[up]")
-    ctx.register_command("viz", viz_command, description=VIZ_HELP)
+    def on_session_start(session_id: str = "", platform: str = "", **_) -> None:
+        """Once per process, a chat that starts in a terminal opens the explorer (unless it is tagged no-vis)."""
+        if platform not in TERMINAL_SURFACES:
+            return None
+        base, info = base_and_info()
+        if novis.blocked(current_home(), session_id, None):
+            return None
+        import_history(current_home(), provider)
+        start_viz(viz_store(base, info))
+        return None
+
+    if hasattr(ctx, "register_hook"):
+        ctx.register_hook("on_session_start", on_session_start)
+    if hasattr(ctx, "register_command"):
+        ctx.register_command("scope", scope_command, description=SCOPE_HELP, args_hint="[up]")
+        ctx.register_command("viz", viz_command, description=VIZ_HELP)
     logging.getLogger(__name__).debug("breadcrumbs: /scope and /viz registered")
