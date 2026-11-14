@@ -26,8 +26,10 @@ import errno
 import http.client
 import os
 import shlex
+import socket
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -116,6 +118,43 @@ def open_window(app, home, show, out, err):
         return failed(app, e, err)
     print("breadcrumbs: opened a new %s window that runs term (Ctrl-C in it stops term)" % APPS[app]["name"], file=out)
     return 0
+
+
+def listening(port, host="127.0.0.1"):
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def explorer_url(home, port=PORT, harness=None):
+    """The URL of the explorer of this home: the port "explorer" that viz asks for. A server that takes this home's
+    token is used again (answers). Else a detached `serve` starts: on the port, or on a free port when another program
+    holds it. The child gets this process's module path, so it has the same packages. harness: the harness that asks
+    (the address carries it, `&h=`, so that the page draws its icon beside the brand: harness.py). A memory with no index.db holds no session yet: the server cannot read it, so
+    this raises LookupError (no server starts)."""
+    if not os.path.isfile(os.path.join(home, "index.db")):
+        raise LookupError("this memory holds no sessions yet (sync first: `sync claude-code`)")
+    if not answers(port, home):
+        if listening(port):
+            port = free_port()
+        env = dict(os.environ, PYTHONPATH=ports.pythonpath(os.pathsep.join(p for p in sys.path if p)))
+        subprocess.Popen([sys.executable, "-W", "ignore", "-m", "breadcrumbs", "--home", home, "serve",
+                          "--port", str(port)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True, env=env,
+                         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        for _ in range(100):
+            if listening(port):
+                break
+            time.sleep(0.1)
+    return "http://127.0.0.1:%d/#k=%s%s" % (port, view.token(home), fragment(harness))
 
 
 def answers(port, home):

@@ -1,4 +1,4 @@
-"""`viz` (the explorer opens where the user is) and `help`."""
+"""`/viz` of Hermes (workdir.open_viz) and `help`. The explorer's own tests are in breadcrumbs-common (tests/test_viz.py)."""
 import contextlib
 import io
 import os
@@ -8,118 +8,7 @@ from unittest import mock
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
-from breadcrumbs import cli
-from breadcrumbs_spacegraph import viz
-
-
-class Viz(unittest.TestCase):
-    def run_viz(self, which, run_rc):
-        calls = []
-
-        def fake_run(argv, **kw):
-            calls.append(argv)
-            return mock.Mock(returncode=run_rc, stderr=b"denied")
-
-        err = io.StringIO()
-        with mock.patch.object(viz, "ensure_server", return_value="http://127.0.0.1:1/#k=x"), \
-                mock.patch.object(viz.shutil, "which", return_value=which), \
-                mock.patch.object(viz.subprocess, "run", fake_run), \
-                mock.patch.object(viz.webbrowser, "open") as browser:
-            rc = viz.run("home", err=err)
-        return rc, calls, browser, err.getvalue()
-
-    def test_cmux_gets_a_browser_split(self):
-        rc, calls, browser, _ = self.run_viz("/x/cmux", 0)
-        self.assertEqual(rc, 0)
-        self.assertEqual(calls, [["/x/cmux", "browser", "open", "http://127.0.0.1:1/#k=x"]])
-        browser.assert_not_called()
-
-    def test_no_cmux_falls_back_to_the_browser(self):
-        rc, calls, browser, _ = self.run_viz(None, 0)
-        self.assertEqual((rc, calls), (0, []))
-        browser.assert_called_once_with("http://127.0.0.1:1/#k=x")
-
-    def test_a_refused_cmux_says_so_and_falls_back(self):
-        rc, _, browser, err = self.run_viz("/x/cmux", 1)
-        self.assertEqual(rc, 0)
-        self.assertIn("cmux could not open it: denied", err)
-        browser.assert_called_once()
-
-
-class Autostart(unittest.TestCase):
-    """viz.autostart: a split in cmux or tmux, the OS in a bare console. No real window opens here."""
-
-    def start(self, env, which=lambda n: "/x/" + n, rc=0):
-        calls = []
-
-        def fake_run(argv, **kw):
-            calls.append(argv)
-            return mock.Mock(returncode=rc, stderr=b"denied")
-
-        with mock.patch.object(viz, "ensure_server", return_value="http://127.0.0.1:1/#k=x"), \
-                mock.patch.object(viz.shutil, "which", which), \
-                mock.patch.object(viz.subprocess, "run", fake_run), \
-                mock.patch.object(viz, "can_launch", return_value=True), \
-                mock.patch.object(viz.webbrowser, "open", return_value=True) as browser:
-            where = viz.autostart("/h/breadcrumbs", env=env, err=io.StringIO())
-        return where, calls, browser
-
-    def test_cmux_gets_a_browser_split(self):
-        where, calls, browser = self.start({"CMUX_SURFACE_ID": "s"})
-        self.assertEqual((where, calls), ("cmux", [["cmux", "browser", "open", "http://127.0.0.1:1/#k=x"]]))
-        browser.assert_not_called()
-
-    def test_tmux_gets_a_pane_that_runs_term(self):
-        where, calls, browser = self.start({"TMUX": "t", "TMUX_PANE": "%3"})
-        self.assertEqual(where, "tmux")
-        self.assertEqual(calls[0][:6], ["tmux", "split-window", "-h", "-d", "-t", "%3"])
-        self.assertTrue(calls[0][-1].endswith("--home /h/breadcrumbs term"))
-        browser.assert_not_called()
-
-    def test_a_bare_console_asks_the_os(self):
-        where, calls, browser = self.start({})
-        self.assertEqual((where, calls), ("os", []))
-        browser.assert_called_once_with("http://127.0.0.1:1/#k=x")
-
-    def test_a_refused_split_falls_back_to_the_os(self):
-        where, _, browser = self.start({"CMUX_SURFACE_ID": "s"}, rc=1)
-        self.assertEqual(where, "os")
-        browser.assert_called_once()
-
-    def test_the_switch_turns_it_off(self):
-        where, calls, browser = self.start({"CMUX_SURFACE_ID": "s", "BREADCRUMBS_VIZ": "0"})
-        self.assertEqual((where, calls), (None, []))
-        browser.assert_not_called()
-
-    def test_linux_without_a_display_does_not_launch(self):
-        self.assertFalse(viz.can_launch({}, platform="linux"))
-        self.assertTrue(viz.can_launch({"DISPLAY": ":0"}, platform="linux"))
-
-
-class Server(unittest.TestCase):
-    """ensure_server: the port of another home's server is not taken for this home's."""
-
-    def url(self, answers, listening):
-        started = []
-        with mock.patch("breadcrumbs_spacegraph.launch.answers", return_value=answers), \
-                mock.patch("breadcrumbs_spacegraph.view.token", return_value="x"), \
-                mock.patch.object(viz, "listening", side_effect=listening), \
-                mock.patch.object(viz, "free_port", return_value=4321), \
-                mock.patch.object(viz.subprocess, "Popen", lambda argv, **kw: started.append(argv)):
-            return viz.ensure_server("home"), started
-
-    def test_a_server_of_this_home_is_used_again(self):
-        self.assertEqual(self.url(True, [AssertionError]), ("http://127.0.0.1:8765/#k=x", []))
-
-    def test_a_port_that_another_server_holds_gives_a_free_port(self):
-        url, started = self.url(False, [True, True])
-        self.assertEqual(url, "http://127.0.0.1:4321/#k=x")
-        self.assertEqual(started[0][-4:], ["home", "serve", "--port", "4321"])
-
-    def test_a_free_port_gets_the_server(self):
-        url, started = self.url(False, [False, True])
-        self.assertEqual(url, "http://127.0.0.1:8765/#k=x")
-        self.assertEqual(started[0][-2:], ["--port", "8765"])
+from breadcrumbs import cli, viz
 
 
 class Help(unittest.TestCase):
@@ -155,6 +44,124 @@ class VizCommand(unittest.TestCase):
         with mock.patch.object(viz, "run", side_effect=OSError("no port")), \
                 mock.patch.object(workdir, "current_home", return_value="/h/profiles/alpha"):
             self.assertIn("did not open: OSError: no port", workdir.open_viz("/h/profiles/alpha/breadcrumbs", hermes="/h"))
+
+
+class VizSeesTheWholeProfile(unittest.TestCase):
+    """/viz opens the profile, not the folder: Hermes is not a secure portal and not a stable namespace, so the explorer sees
+    every chat of state.db (imported first) and every scope; "viz": "scope" in config.json narrows it again."""
+
+    def setUp(self):
+        import json
+        import tempfile
+
+        from tests.test_hermes_ingest import make_db
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = os.path.join(self.tmp.name, "profiles", "alpha")
+        self.base = os.path.join(self.home, "breadcrumbs")
+        self.scope_store = os.path.join(self.base, "scopes", "app-1234abcd")
+        os.makedirs(self.scope_store)
+        make_db(os.path.join(self.home, "state.db"))  # two chats that no store holds yet
+        self.json = json
+
+    def run_viz(self, provider=None):
+        from breadcrumbs_hermes import workdir
+        seen = []
+
+        def fake_run(home, port=viz.PORT, err=None, terminal=True, harness=None):
+            seen.append(home)
+            return 0
+
+        class Ctx:
+            cmds = {}
+
+            def register_command(self, name, fn, **kw):
+                self.cmds[name] = fn
+
+        ctx = Ctx()
+        info = {"store": self.scope_store, "cwd": "/w/app", "root": "/w/app", "kind": "git", "on": True}
+        with mock.patch.object(viz, "run", fake_run), mock.patch.object(workdir, "current_home", return_value=self.home):
+            workdir.register(ctx, mock.Mock(scope_info=info, spec=["scope_info"]))
+            out = ctx.cmds["viz"]("", "s1", "cli")
+        return seen, out
+
+    def sessions_in(self, store):
+        from breadcrumbs.history import Refs
+        return sorted(n for n in Refs(os.path.join(store, "refs")).names() if n.startswith("sess-"))
+
+    def test_the_explorer_opens_the_base_after_importing_state_db(self):
+        self.assertEqual(self.sessions_in(self.base), [])
+        seen, out = self.run_viz()
+        self.assertEqual(seen, [self.base])  # the profile, not the scope of the folder
+        self.assertEqual(self.sessions_in(self.base), ["sess-s1", "sess-s2"])
+        self.assertIn("is open", out)
+
+    def test_the_import_is_idempotent(self):
+        self.run_viz()
+        self.run_viz()
+        self.assertEqual(self.sessions_in(self.base), ["sess-s1", "sess-s2"])
+
+    def test_scope_in_config_narrows_it_to_the_chats_scope(self):
+        with open(os.path.join(self.base, "config.json"), "w", encoding="utf-8") as f:
+            self.json.dump({"viz": "scope"}, f)
+        seen, _ = self.run_viz()
+        self.assertEqual(seen, [self.scope_store])
+
+    def test_a_broken_state_db_still_opens_the_explorer_and_leaves_its_error(self):
+        with open(os.path.join(self.home, "state.db"), "wb") as f:
+            f.write(b"not a database")
+        seen, out = self.run_viz()
+        self.assertEqual(seen, [self.base])
+        self.assertTrue(os.path.getsize(os.path.join(self.base, "ingest.err")) > 0)
+
+
+class ExplorerAtStart(unittest.TestCase):
+    """A chat that starts in a terminal opens the explorer of the profile once per process (the provider's initialize)."""
+
+    def setUp(self):
+        import tempfile
+
+        from breadcrumbs_hermes import hermes, workdir
+        from tests.test_hermes_ingest import make_db
+        self.hermes, self.workdir = hermes, workdir
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = os.path.join(self.tmp.name, "profiles", "alpha")
+        self.base = os.path.join(self.home, "breadcrumbs")
+        os.makedirs(self.home)
+        make_db(os.path.join(self.home, "state.db"))
+        workdir._viz_started = False
+        self.addCleanup(setattr, workdir, "_viz_started", False)
+
+    def start(self, platform, sid="s1", **kw):
+        import threading
+        calls, done = [], threading.Event()
+
+        def fake_autostart(home, env=os.environ, err=None, harness=None):
+            calls.append((home, harness))
+            done.set()
+
+        with mock.patch.object(viz, "autostart", fake_autostart):
+            for _ in range(2):  # the second chat of the process
+                p = self.hermes.BreadcrumbsProvider()
+                p.initialize(sid, hermes_home=self.home, platform=platform, **kw)
+            done.wait(3)
+        return calls, p
+
+    def test_a_terminal_chat_opens_the_explorer_of_the_profile_once(self):
+        calls, p = self.start("cli")
+        self.assertEqual(calls, [(self.base, "hermes")])
+        self.assertEqual(sorted(n for n in os.listdir(os.path.join(self.base, "refs")) if n.startswith("sess-")), ["sess-s1", "sess-s2"])  # state.db came first
+
+    def test_a_messaging_chat_opens_nothing(self):
+        self.assertEqual(self.start("telegram")[0], [])
+
+    def test_a_forked_agent_opens_nothing(self):
+        self.assertEqual(self.start("cli", agent_context="subagent")[0], [])
+
+    def test_a_no_vis_chat_opens_nothing(self):
+        with mock.patch.object(self.hermes.novis, "blocked", return_value="this chat opted out"):
+            self.assertEqual(self.start("cli")[0], [])
 
 
 if __name__ == "__main__":

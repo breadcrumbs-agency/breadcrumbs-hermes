@@ -6,10 +6,11 @@ registration happen once, whichever import comes first.
     ports      neighbor dial state codebase profile hide blocked  (for the viewers, the hive and the searches)
                price  (the rates of a model, for the cache metrics: breadcrumbs/usage.py)
                ace_join  (each ace.log line with the request that it shaped: ace.join)
-    commands   ace dials ingest-hermes scopes seats seat no-vis  (scopes, seats, dials, ace, the hide list)
+    commands   ace ingest-hermes scopes seats seat no-vis  (scopes, seats, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
-               icon.png: the Hermes Agent app icon, website/static/img/favicon.svg of NousResearch/hermes-agent (MIT), 96 px)
+               icon.png: the breadcrumbs mark (four crumbs that climb, on the brand's gradient tile, from the brand of
+               breadcrumbs-spacegraph view.html), 96 px; ports.image() reads it into the entry as the icon)
 
 Each function imports its module when it is called, not before: a command loads only the modules that it needs, and a
 patched name of a module (a test) is read at the call.
@@ -126,11 +127,6 @@ def _neighbor():
     return NEIGHBOR
 
 
-def _dial(root, key):
-    from . import dials
-    return dials.value(dials.config(root), None, key)
-
-
 def _state(path, fn, connect=None):
     from . import logview
     return logview.read(path, fn, connect)
@@ -162,9 +158,18 @@ _PRICES = {}  # (model, provider) -> rates or None: one ask of Hermes's table fo
 
 
 def _price(model, provider):
-    """The price port (breadcrumbs/usage.py): (input, cache read, cache write) in USD per 1M tokens, from Hermes's own table
-    (agent/usage_pricing.py get_pricing_entry), or None: no Hermes on the path, an unknown model, or a missing rate.
-    Imported at the first ask, inside a try: a view without Hermes still opens. No price is copied into this package."""
+    """The price port (breadcrumbs/usage.py). First the cost profile of the model (breadcrumbs/costs.py: the built-in
+    profiles and <breadcrumbs home>/costs.json), as tiers when its price steps up with the prompt; else the rates from
+    Hermes's own table (agent/usage_pricing.py get_pricing_entry): (input, cache read, cache write) in USD per 1M tokens.
+    None: no price. Imported at the first ask, inside a try: a view without Hermes still opens. No price is copied here."""
+    try:
+        from breadcrumbs import costs
+        from breadcrumbs.cli import default_home
+        _, prof = costs.lookup(model, default_home())
+        if prof is not None:
+            return costs.price_tiers(prof)
+    except Exception:  # a profile that cannot be read is no profile: Hermes's table answers
+        pass
     key = (model, provider or None)
     if key not in _PRICES:
         try:
@@ -203,18 +208,6 @@ def _ace(args, home):  # read-only
     lines = ace.status_lines(home)
     print("\n".join(lines) if lines else "no ace.log at %s" % home)
     return 0 if lines else 1
-
-
-def _add_dials(sub):
-    p = sub.add_parser("dials", help="every knob and dial with its value and where the value came from (read-only)")
-    p.add_argument("--model", help="the model whose entries of config.json count")
-    p.add_argument("--markdown", action="store_true", help="the tables of README \"Knobs and dials\"")
-
-
-def _dials(args, home):  # read-only
-    from . import dials
-    print(dials.markdown() if args.markdown else "\n".join(dials.show(home, args.model)))
-    return 0
 
 
 def _add_ingest(sub):
@@ -388,7 +381,6 @@ def _setup(cmd):
 
 if ports.layer("hermes", __file__):
     ports.give("neighbor", _neighbor)
-    ports.give("dial", _dial)
     ports.give("state", _state)
     ports.give("codebase", _codebase)
     ports.give("profile", _profile)
@@ -397,7 +389,6 @@ if ports.layer("hermes", __file__):
     ports.give("price", _price)
     ports.give("ace_join", _ace_join)
     ports.command("ace", _add_ace, _ace, after="log")
-    ports.command("dials", _add_dials, _dials, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
     ports.command("slot", _add_slot, _slot, after="vault")
     ports.command("install-hermes", _add_install, _install, after="vault")

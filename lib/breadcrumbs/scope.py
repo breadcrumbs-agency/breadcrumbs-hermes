@@ -154,6 +154,15 @@ def store_home(base, root):
     return os.path.join(base, "scopes", scope_id(root))
 
 
+def base_of(store):
+    """The base that a store belongs to: <base> for <base>/scopes/<id>, and the store itself for a base. The logs of the
+    harness (ace.log, usage.log), its state.db (in the folder above the base) and the profile's opt-outs belong to the
+    base, not to a scope: a viewer of a scope reads them through this."""
+    store = os.path.abspath(os.path.expanduser(store))
+    parent = os.path.dirname(store)
+    return os.path.dirname(parent) if os.path.basename(parent) == "scopes" else store
+
+
 def ensure(base, kind, root):
     """The store folder of a scope, made, with scope.json (its root and kind) so the scopes can be listed."""
     home = store_home(base, root)

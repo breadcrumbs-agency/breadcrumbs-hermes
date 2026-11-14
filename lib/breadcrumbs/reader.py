@@ -1,17 +1,16 @@
 """The reader of a store: the read-only access that the verbs of common need (bc, find, open, zoom, trail, the vault
 export, the hive). The viewers (view.py) build on it. A Reader creates and changes no file.
 
-This module is in the layer common. Where a harness gives the dial "neighbor" for the store (the port "dial", ports.py),
-find uses it; with no harness, find uses index.NEIGHBOR.
+This module is in the layer common. find reads the dial "neighbor" of the store (dials.py).
 """
 import json
 import os
 import threading
 
-from . import ports
+from . import dials
 from .crumbs import Crumb, is_crumb
 from .history import Refs, _ref_name
-from .index import NEIGHBOR, Index
+from .index import Index
 from .store import Store
 from .zoom import Zoom
 
@@ -81,8 +80,7 @@ class Reader:
 
     def find(self, q, k=8):
         """Search hits grouped by session: [{session, hits: [{id, ref, score}]}], best first."""
-        dial = ports.get("dial")  # the dials of the harness; no harness: the default of the dial
-        nb = dial(self.root, "neighbor") if dial else NEIGHBOR
+        nb = dials.value(dials.config(self.root), None, "neighbor")
         with self.lock:
             groups, n = {}, 0
             for cid, ref, score in self.index.search(q, 3 * k, nb=nb):

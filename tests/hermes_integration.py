@@ -262,6 +262,12 @@ def handbook_check():
         assert prov is not None and prov.handbook == "breadcrumbs:dispatch", getattr(prov, "handbook", None)
         rows = dict(_plugin_skill_prompt_rows(set(), None, None, None))
         assert rows.get("breadcrumbs:dispatch") == hermes.HANDBOOK_ABOUT, rows
+        assert rows.get("breadcrumbs:hierarchy") == hermes.HIERARCHY_ABOUT, rows
+        deep = json.loads(skill_view("breadcrumbs:hierarchy"))
+        deep_text = deep.get("content", "")
+        assert deep.get("success") and "pinpoint" in deep_text, sorted(deep)
+        assert "${HERMES_SKILL_DIR}" not in deep_text and os.path.dirname(hermes.HIERARCHY) in deep_text, \
+            "the skill folder was not filled in"
         page = json.loads(skill_view("breadcrumbs:dispatch"))
         text = page.get("content", "")
         cmd = 'cd "%s/../../.." && python3 -m breadcrumbs bc' % os.path.dirname(hermes.HANDBOOK)
@@ -270,14 +276,15 @@ def handbook_check():
         mgr.add_provider(prov)
         mgr.initialize_all(session_id="hb-1", platform="cli", hermes_home=home, agent_context="primary")
         assert 'skill_view("breadcrumbs:dispatch")' in mgr.build_system_prompt()
+        assert "breadcrumbs:hierarchy" not in mgr.build_system_prompt(), "the prompt block names the handbook only"
         mgr.sync_all("where is the walrus kettle", "the walrus kettle is on the top shelf", session_id="hb-1")
         assert mgr.flush_pending(timeout=10), "sync did not drain"
         out = subprocess.run("%s %s 1" % (cmd, prov.session_crumb("hb-1")), shell=True, capture_output=True,
                              text=True)
         assert out.returncode == 0 and "the walrus kettle is on the top shelf" in out.stdout, out.stderr
         mgr.shutdown_all()
-        print("OK: Hermes listed breadcrumbs:dispatch, served it with its folder filled in, the prompt block "
-              "named it, and its bc command showed the session beside the live store")
+        print("OK: Hermes listed breadcrumbs:dispatch and breadcrumbs:hierarchy, served both with their folder filled in, "
+              "the prompt block named the handbook only, and its bc command showed the session beside the live store")
 
 
 def scope_check():
@@ -349,14 +356,14 @@ def scope_check():
 
 
 def wire_check():
-    """Each model's options on Hermes's OpenAI chat-completions wire (dials.py). First, with Hermes's own auth
-    registry as the oracle and its provider profiles (what dials.oauth reads): each provider that logs in with
+    """Each model's options on Hermes's OpenAI chat-completions wire (options.py). First, with Hermes's own auth
+    registry as the oracle and its provider profiles (what options.oauth reads): each provider that logs in with
     OAuth and has a profile keeps the request that Hermes builds, and each API-key provider takes the options. A
-    login with no profile is named: dials.oauth cannot see it. Then tests/openai_wire_e2e.py runs one AIAgent turn
+    login with no profile is named: options.oauth cannot see it. Then tests/openai_wire_e2e.py runs one AIAgent turn
     against a local server, first without the middleware and then with it. It runs as a child process, because
     AIAgent reads HERMES_HOME when Hermes loads."""
     import subprocess
-    from breadcrumbs_hermes import dials
+    from breadcrumbs_hermes import options
     from hermes_cli.auth import PROVIDER_REGISTRY
     from providers import get_provider_profile
     with tempfile.TemporaryDirectory() as home:
@@ -367,9 +374,9 @@ def wire_check():
         assert logins and keys, (logins, keys)
         unseen = [k for k in logins if get_provider_profile(k) is None]
         for k in logins:
-            assert k in unseen or dials.oauth(k), k
+            assert k in unseen or options.oauth(k), k
         for k in keys:
-            assert not dials.oauth(k), k
+            assert not options.oauth(k), k
         print("OAuth logins that keep Hermes's request: %s; with no profile: %s; API-key providers that take the "
               "options: %d" % (", ".join(k for k in logins if k not in unseen), ", ".join(unseen) or "none", len(keys)))
     run = subprocess.run([sys.executable, os.path.join(REPO, "tests", "openai_wire_e2e.py")],

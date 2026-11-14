@@ -19,7 +19,7 @@ os.environ.setdefault("SPACEGRAPH_NO_WARM", "1")  # loading the router must not 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from breadcrumbs import cli
 from breadcrumbs_hermes import novis, workdir
-from breadcrumbs_spacegraph import viz  # noqa: E402
+from breadcrumbs import viz  # noqa: E402
 from breadcrumbs_spacegraph.view import View  # noqa: E402
 from test_context import scenario  # noqa: E402
 from test_dashboard import FASTAPI, PREFIX, plugin_client  # noqa: E402

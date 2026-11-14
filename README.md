@@ -84,7 +84,7 @@ programs are not in this release.
 
 ## ONE MEMORY FOR EACH GIT REPOSITORY OR FOLDER, NO PROFILES!
 
-`[PROJECT] THE FOLDER OF THE CHAT → ITS GIT REPOSITORY, OR THE FOLDER ITSELF → ITS OWN MEMORY · /scope SHOWS IT · /viz OPENS IT`
+`[PROJECT] THE FOLDER OF THE CHAT → ITS GIT REPOSITORY, OR THE FOLDER ITSELF → ITS OWN MEMORY · /scope SHOWS IT · /viz OPENS THE WHOLE PROFILE`
 
 A chat's memory is chosen by where the chat works, not by which Hermes profile runs it. breadcrumbs reads the folder
 of the chat, takes its git repository (a linked worktree or a submodule counts as its main repository), a folder
@@ -212,7 +212,10 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
 - **A context engine** (ACE): `hermes config set context.engine breadcrumbs`.
 - **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
   hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
-- **`/viz`**: a slash command that opens the explorer of the memory of the chat's scope, with no command line.
+- **`/viz`**: a slash command that opens the explorer of the whole profile, with no command line: it first imports the profile's `state.db` (read-only, idempotent) so every Hermes chat shows, not only the chats that this plugin has seen, then opens the base store with all of its scopes. Hermes is not a secure portal and its names are not stable, so the explorer sees what the profile holds; the viewers' disclosure level and `novis` decide what it shows. `"viz": "scope"` in `config.json` narrows it to the memory of the chat's scope.
+  Hermes's entry in the harness table carries the breadcrumbs mark as its icon (`icon.png`). The explorer does not draw the icon yet
+  (the brand bar has no harness picture); `BREADCRUMBS_HARNESS=<name>` names the
+  program for a view that was not opened by one.
 - **One core for every harness** (`breadcrumbs/core.py`): six read-only verbs (`find`, `open`, `zoom`, `trail`, `stores`, `health`) over all stores at once (`~/.hermes`, each profile, and `--home` as `local`), held open in one process. Three thin servers carry the same table: `python -m breadcrumbs core mcp` (MCP over stdio), `core sock` (a Unix socket, mode 0600; `--tcp PORT` adds loopback TCP that wants `core.token`) and `core a2a` (A2A 0.3 on 127.0.0.1 with a bearer token). A client names itself (MCP `clientInfo`, the A2A `User-Agent` or `X-Harness`, the `harness` field of a socket request); the core tells Hermes, Claude Code, Codex and OpenCode apart, counts their calls in `health`, and `core setup [HARNESS]` prints the command that adds the MCP server to each one.
 - **The explorer.** It opens a session as a document: turn frames, phase bands, tool and file cards. It draws
   the receipts as a Gantt chart (crumbs by turns; each bar holds the text that the model saw) and a Venn of
@@ -416,6 +419,7 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `overflow_low` | 0.02 | 0 to 1 |  | The controller raises the budget when fewer turns than this share overflow. |
 | `overflow_high` | 0.05 | 0 to 1 |  | The controller lowers the budget when more turns than this share overflow. |
 | `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only), writes them to the child's own store (the folder children/ID of the breadcrumbs folder), and exports them there as a CAR file. It then imports the CAR into the profile's own store as private crumbs. When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
+| `update_ms` | 2,000 | 200 to 60000 | `BREADCRUMBS_UPDATE_MS` | The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the map, the context and the trail; the measures poll at three times it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
 
 | Environment knob | Default | What it does |
 |---|---|---|
@@ -431,9 +435,6 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `BREADCRUMBS_GRAAL_HEAP` | 4g | The heap of a GraalPy run. |
 | `BREADCRUMBS_IPFS` | ipfs on the PATH | The kubo binary, for `push`, `pull` and the hive. |
 | `BREADCRUMBS_HERMES_REPO` | ~/.hermes/hermes-agent | The Hermes checkout that `seat` commands read. |
-
-`python -m breadcrumbs --home <HERMES_HOME>/breadcrumbs ace` shows the size of each chat against its target
-(from `ace.log`; read-only). A model sees only its own context, not the size of it.
 
 </details>
 

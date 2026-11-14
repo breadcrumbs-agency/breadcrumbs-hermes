@@ -1,6 +1,7 @@
-"""The knobs and dials of breadcrumbs: one table, DIALS, and the code that reads it.
+"""The knobs and dials of breadcrumbs: one table, DIALS, and the code that reads it. Every harness reads this table.
 
-A dial is set in <HERMES_HOME>/breadcrumbs/config.json (each profile has its own file):
+A dial is set in config.json of the breadcrumbs folder (each store has its own file; for Hermes that is
+<HERMES_HOME>/breadcrumbs/config.json of the profile):
 
   {"ace_tokens": 200000,
    "models": {"*nemotron*": {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "ace_tokens": 290000,
@@ -9,37 +10,22 @@ A dial is set in <HERMES_HOME>/breadcrumbs/config.json (each profile has its own
 
 A value comes from, in this order (the last one that sets the dial wins): the default, the top level of the
 file, each built-in entry of MODELS that matches the model name, each glob of "models" that matches the model
-name (in file order), and the environment variable of the
-dial. A value that is not valid (a wrong type, or out of its range) gives the default, and an environment
-variable that is not valid is ignored; `python -m breadcrumbs dials` says so, as it does for a key that is no
-dial (a typing mistake). `python -m breadcrumbs dials` shows every
-dial with its value and where the value came from. README "Knobs and dials" holds the same table; a test keeps
-the two equal.
+name (in file order), and the environment variable of the dial. A value that is not valid (a wrong type, or out
+of its range) gives the default, and an environment variable that is not valid is ignored; `python -m breadcrumbs
+dials` says so, as it does for a key that is no dial (a typing mistake). It shows every dial with its value and
+where the value came from. The README of breadcrumbs-hermes holds the same table; a test there keeps the two equal.
 
 A "models" entry also holds the request options of a model (temperature, top_p, top_k, ...): any key that is no
 dial and does not start with "ace_". So one entry holds a model's temperature and the ACE dials that suit that
-temperature (ace.Ace._dial). Hermes sends no temperature of its own on the OpenAI chat-completions wire. The main
-agent passes none to the transport, and agent/transports/chat_completions.py _base_kwargs reads one only from a
-provider profile's fixed value. register() adds Hermes's public llm_request middleware (developer-guide/middleware),
-so the options go into each chat-completions request of a chat after Hermes builds it: a key of the OpenAI spec at
-the top level, any other sampler key (top_k, min_p, repetition_penalty, ...) in extra_body, and a null removes the
-key. Hermes runs that middleware on the requests of a chat, not on its helper calls (titles, compression, vision).
-Only this open wire changes, and only for a provider that you call with an API key (or none). The Anthropic wire,
-and each provider that logs in with OAuth (oauth()), keep the request that Hermes builds: their terms can forbid a
-change. The file is read at each request, so a change applies to the next request.
+temperature (ace_core.Engine._dial). A harness that can change its request sends them
+(breadcrumbs_hermes/options.py).
 """
 import fnmatch
 import json
-import logging
 import os
 from collections import namedtuple
 
-log = logging.getLogger(__name__)
-
-# The top-level request keys of the OpenAI chat-completions spec that a model option can set.
-SPEC = frozenset(("temperature", "top_p", "frequency_penalty", "presence_penalty", "seed", "stop", "logit_bias",
-                  "logprobs", "top_logprobs", "n", "max_tokens", "max_completion_tokens", "reasoning_effort",
-                  "service_tier", "parallel_tool_calls", "verbosity", "user"))
+from . import costs
 
 # key, default, kind (int, float, bool), lo, hi (None: no bound), group, environment variable, meaning
 Dial = namedtuple("Dial", "key default kind lo hi group env doc")
@@ -114,14 +100,18 @@ DIALS = (
          "file. It then imports the CAR into the profile's own store as private crumbs. When the result of "
          "delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: "
          "nothing is read, nothing is written and no result changes."),
+    Dial("update_ms", 2000, "int", 200, 60000, "Viewer", "BREADCRUMBS_UPDATE_MS",
+         "The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the "
+         "map, the context and the trail; the measures poll at three times it. Read from the top level of config.json "
+         "and from the environment. A value of a 'models' entry is not used here."),
 )
 BY_KEY = {d.key: d for d in DIALS}
 
-# The prompt size in tokens at which a model's price per token steps up. All input tokens count, cache reads and
-# writes too, as in Hermes's prompt_tokens, which ACE counts by. Claude Haiku 5.5 costs 5 times as much per token
-# over 100,000 (Anthropic's prices of 2026-10-07).
-PRICE_STEPS = {"*haiku-5[.-]5*": 100_000}
-# The most that ACE's estimate of a request read under the model's count (ace.Ace.tokens: 5.9% on a live run, Nov 8
+# The prompt size in tokens at which a model's price per token steps up: the end of the first tier of its built-in cost
+# profile (costs.BUILTIN). All input tokens count, cache reads and writes too, as in the prompt_tokens that ACE counts
+# by. Claude Haiku 5.5 costs 5 times as much per token over 100,000.
+PRICE_STEPS = {glob: prof["tiers"][0]["upto"] for glob, prof in costs.BUILTIN.items() if prof["tiers"][0].get("upto")}
+# The most that ACE's estimate of a request read under the model's count (ace_core.Engine.tokens: 5.9% on a live run, Nov 8
 # 2026). A ceiling of the step times 1 minus this, down to the thousand, keeps the bill under the step.
 UNDER_READ = 0.059
 
@@ -255,11 +245,17 @@ def env_value(key):
     """The value of a dial from the environment alone (the default when it is not set or not valid)."""
     return value({}, None, key)
 
+def top(root, key, environ=None):
+    """The value of a dial that belongs to no model (update_ms): the top level of <root>/config.json and the
+    environment. The "models" entries do not count. root None: the environment and the default."""
+    cfg = {k: v for k, v in config(root).items() if k != "models"} if root else {}
+    return value(cfg, None, key, environ)
+
 
 def unknown(cfg):
     """The keys of config.json (and of its "models" entries) that are no dial and no other setting: a typing
     mistake keeps the default without a word otherwise. In a "models" entry a key that does not start with
-    "ace_" is a request option (see apply), not a typing mistake."""
+    "ace_" is a request option (a harness sends it: breadcrumbs_hermes/options.py), not a typing mistake."""
     out = ["config %s: no such dial" % k for k in cfg if k not in BY_KEY and k not in OTHER_KEYS]
     models = cfg.get("models")
     for glob, opts in (models.items() if isinstance(models, dict) else ()):
@@ -315,72 +311,3 @@ def markdown():
     out += ["", "| Environment knob | Default | What it does |", "|---|---|---|"]
     out += ["| `%s` | %s | %s |" % (n, dflt, doc) for n, dflt, doc in KNOBS]
     return "\n".join(out)
-
-
-def apply(kwargs, opts):
-    """Put the request options of opts into chat-completions kwargs. The dials stay out."""
-    extra = dict(kwargs.get("extra_body") or {})
-    for key, value in opts.items():
-        if key in BY_KEY or key.startswith("ace_"):
-            continue
-        if key == "extra_body" and isinstance(value, dict):
-            extra.update(value)
-            continue
-        where = kwargs if key in SPEC else extra
-        if value is None:
-            where.pop(key, None)
-        else:
-            where[key] = value
-    if extra:
-        kwargs["extra_body"] = extra
-    else:
-        kwargs.pop("extra_body", None)
-    return kwargs
-
-
-def oauth(provider):
-    """True when the request goes to a provider that logs in with OAuth (nous, qwen-oauth, solstice on this
-    wire). Its terms can forbid a changed request, so it keeps the request that Hermes builds. Hermes's provider
-    profile of that name (the public module providers) names its auth type."""
-    name = str(provider or "").strip().lower()
-    try:
-        from providers import get_provider_profile
-        prof = get_provider_profile(name) if name else None
-    except Exception:  # not inside Hermes, or its lookup failed: no profile, so no OAuth
-        prof = None
-    kinds = [getattr(prof, "auth_type", ""), getattr(prof, "registry_auth_type", "")]
-    return any(str(k or "").startswith("oauth") for k in kinds)
-
-
-def middleware(home):
-    """The llm_request middleware: the options of the model in "models" go into a chat-completions request.
-    home() gives the HERMES_HOME at the time of the request. None keeps the request that Hermes built."""
-
-    def llm_request(request=None, model=None, provider=None, api_mode=None, **_):
-        if api_mode != "chat_completions" or not isinstance(request, dict):
-            return None
-        try:
-            if oauth(provider):
-                return None
-            opts = options(config(os.path.join(home(), "breadcrumbs")), model or request.get("model"))
-            if not opts:
-                return None
-            return {"request": apply(dict(request), opts), "source": "breadcrumbs",
-                    "reason": "the request options of the model in config.json (dials.py)"}
-        except Exception:  # a bad option must not stop the request
-            log.warning("breadcrumbs: the model options for %s were not applied", model, exc_info=True)
-            return None
-
-    return llm_request
-
-
-def register(ctx, home):
-    """Add the middleware where the Hermes context has register_middleware. True when it was added."""
-    if not hasattr(ctx, "register_middleware"):
-        return False
-    try:
-        ctx.register_middleware("llm_request", middleware(home))
-    except Exception as e:  # a Hermes that refuses it still loads the plugin
-        log.debug("breadcrumbs: no llm_request middleware (%s)", type(e).__name__)
-        return False
-    return True

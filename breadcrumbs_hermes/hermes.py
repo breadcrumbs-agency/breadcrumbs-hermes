@@ -18,7 +18,9 @@ import sqlite3
 import threading
 import time
 
-from . import dials, workdir
+from breadcrumbs import dials
+
+from . import novis, workdir
 from breadcrumbs import finder, handles, ports, tags
 from breadcrumbs.crc32c import BACKEND
 from breadcrumbs.crumbs import Crumb, get_crumb, put_crumb
@@ -88,12 +90,18 @@ HIVE_BLOCK = ("\n- With hive peers, crumb_find also shows a \"\u25c7 hive\" line
 # <plugin>:dispatch (register_handbook), named again in the prompt block under the tools.
 HANDBOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "dispatch", "SKILL.md")
 HANDBOOK_ABOUT = "Use when you delegate or dispatch work. Send exact crumbs."
+# The hierarchy skill goes beside it, as <plugin>:hierarchy: one lead and three lanes of models, the dials of each
+# lane, the sub-sessions, and the project that several gateways share. Hermes lists it in the skills index with its
+# description; the prompt block under the tools does not name it, so that block stays as long as it was.
+HIERARCHY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "hierarchy", "SKILL.md")
+HIERARCHY_ABOUT = "Use when you split work across models. Lanes, dials, hive."
 HANDBOOK_LINE = ("\n- Before you give work to a helper (delegate_task, message_agent, a cron job), read "
                  "skill_view(\"%s\"). It tells how to send exact crumbs, not your own words for them.")
 
 
 def register_handbook(ctx, provider):
-    """Register the handbook with the tools. A Hermes without plugin skills gets no skill and no prompt line."""
+    """Register the handbook with the tools, and the hierarchy skill after it. A Hermes without plugin skills gets no
+    skill and no prompt line."""
     if not hasattr(ctx, "register_skill"):
         return
     try:
@@ -102,6 +110,10 @@ def register_handbook(ctx, provider):
         return
     plugin = getattr(ctx, "name", None) or getattr(getattr(ctx, "manifest", None), "name", None)
     provider.handbook = "%s:dispatch" % (plugin or "breadcrumbs")
+    try:  # the second skill never takes the first one down: a refusal leaves the handbook and its prompt line in place
+        ctx.register_skill("hierarchy", HIERARCHY, HIERARCHY_ABOUT)
+    except Exception:
+        pass
 
 
 def register_handles(ctx):
@@ -114,17 +126,17 @@ def register_handles(ctx):
 
 def register_plugin(ctx, provider):
     """What both entry points (the repository root and the shim) add to Hermes after the provider: its
-    handbook, the middleware of the dials (the options of a model in "models" reach the OpenAI chat-completions
-    wire, dials.py), /scope and /viz (workdir.py), the usage
+    handbook, the middleware of the request options (the options of a model in "models" reach the OpenAI
+    chat-completions wire, options.py), /scope and /viz (workdir.py), the usage
     log (one line of numbers for each model request) and the hook of the family. Each entry point registers the
     provider and ACE itself: Hermes finds a user plugin's memory provider and context engine by the texts
     "register_memory_provider" and "register_context_engine" in its __init__.py (plugins/memory and
     plugins/context_engine in Hermes). Each part goes through a public register_* call of the Hermes context;
     nothing here replaces a class or a function of Hermes."""
-    from . import dials, usage_log, workdir
+    from . import options, usage_log, workdir
     from .ace import _home
     register_handbook(ctx, provider)
-    dials.register(ctx, _home)
+    options.register(ctx, _home)
     workdir.register(ctx, provider)
     usage_log.register(ctx)
     register_handles(ctx)
@@ -268,6 +280,8 @@ class BreadcrumbsProvider(MemoryProvider):
         self.session_id = session_id or ""
         self.trail = Trail(session=self.session_id)
         self.writable = kwargs.get("agent_context") in (None, "", "primary")
+        if self.writable and kwargs.get("platform") in workdir.TERMINAL_SURFACES and not novis.blocked(self._home, session_id, None):
+            workdir.start_viz(workdir.viz_store(self.home_root, self.scope_info), before=lambda: workdir.import_history(self._home, self))  # the explorer at the start of a terminal chat
         self.summarizer = default_runner() if self.writable else None
         self._horizon_path = os.path.join(self.root, "horizon.json")
         saved = False
@@ -978,6 +992,32 @@ class BreadcrumbsProvider(MemoryProvider):
                 sess = self.session_crumb(self.session_id) if self.writable else None
             if sess:
                 self._queue_summaries(closed_spans(self.store, sess) + [sess])
+        if self.writable:
+            self._import_state()
+
+    def _import_state(self):
+        """Import this profile's state.db into the profile's base store: the store the viewer reads, so every session
+        shows without a manual ingest-hermes. Read-only on state.db, idempotent (the rows ingest-hermes writes).
+        A failure is recorded in <base>/ingest.err and never stops the session from ending."""
+        db = os.path.join(self._home, "state.db")
+        if not os.path.exists(db):
+            return None
+        try:
+            from .hermes_ingest import ingest_state_db
+            if self.root == self.home_root:
+                return ingest_state_db(db, self.store, self.index, self.refs)
+            from breadcrumbs import cli
+            store, index, refs, _zoom = cli.open_all(self.home_root)
+            try:
+                return ingest_state_db(db, store, index, refs)
+            finally:
+                index.close()
+                store.close()
+        except Exception as e:  # the session still ends; the error is kept for the viewer and the next run
+            os.makedirs(self.home_root, exist_ok=True)
+            with open(os.path.join(self.home_root, "ingest.err"), "a", encoding="utf-8") as f:
+                f.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), e))
+            return None
 
     def queue_prefetch(self, query, *, session_id=""):
         if self.slot is not None:

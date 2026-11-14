@@ -22,7 +22,8 @@ The cache metrics (added to the table of breadcrumbs/metrics.py):
                             port (USD per 1M tokens). No port, an unknown model or a missing rate: no number.
 
 The price port, ports.get("price"): price(model, provider) -> (input, cache read, cache write) in USD per 1M tokens,
-or None. A harness gives it (the adapter of hermes, from Hermes's own table).
+or a list of (upto, rates) tiers for a price that steps up with the prompt (costs.pick), or None. A harness gives it
+(the adapter of hermes: the cost profile of costs.py first, then Hermes's own table).
 
 The cache writes beside the ACE acts (AFTER, group "ace"), for each act A of ACTS (pass, keep, fold, ratchet), counted on
 the main requests that the port ace_join (the harness that writes ace.log) joins ace.log lines to. A request counts once,
@@ -46,7 +47,7 @@ import re
 import time
 from collections.abc import Mapping
 
-from . import metrics, ports
+from . import costs, metrics, ports
 
 COUNTS = ("in", "cr", "cw", "out", "rsn")  # the token fields of a record
 PROMPT = ("in", "cr", "cw")  # the parts of the prompt
@@ -71,12 +72,16 @@ _AGG = {m["key"]: m["agg"] for m in CACHE}
 
 
 def rates(model, provider):
-    """The rates of the price port for a model: (input, cache read, cache write) in USD per 1M tokens, or None."""
+    """The price of a model from the price port: (input, cache read, cache write) in USD per 1M tokens; or a list of
+    (upto, rates) tiers for a price that steps up with the size of the prompt (costs.pick picks one); or None."""
     price = ports.get("price")
     if price is None or not model:
         return None
     try:
         r = price(model, provider)
+        if isinstance(r, list):  # a missing rate (None) raises here
+            tiers = [(upto, tuple(float(x) for x in rr[:3])) for upto, rr in r]
+            return tiers if tiers and all(len(rr) == 3 for _, rr in tiers) else None
         r = None if r is None else tuple(float(x) for x in r[:3])  # a missing rate (None) raises here
         return r if r is not None and len(r) == 3 else None
     except Exception:  # a port that fails, or a rate that is missing: no price, never an error in a view
@@ -106,7 +111,8 @@ def breaks(records):
 
 def values(records, price=rates):
     """What each record gives to the cache metrics, in the order given: [{metric key: value}]. A ratio gives its pair
-    (numerator, denominator); cache_saved_usd is there only when price(model, provider) gives rates."""
+    (numerator, denominator); cache_saved_usd is there only when price(model, provider) gives rates. A price with
+    tiers is picked by the prompt of each record (costs.pick)."""
     records = list(records)
     broke, out, known = breaks(records), [], {}
     for i, r in enumerate(records):
@@ -115,7 +121,7 @@ def values(records, price=rates):
         at = (r.get("model"), r.get("prov"))
         if price and at not in known:  # one ask of the price port for each model and provider
             known[at] = price(*at)
-        usd = saved(r, known.get(at))
+        usd = saved(r, costs.pick(known.get(at), sum(r[k] for k in PROMPT)))
         if usd is not None:
             v["cache_saved_usd"] = usd
         out.append(v)

@@ -18,6 +18,15 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #harness{display:inline-flex;align-items:center;gap:7px;height:20px;margin-left:4px;padding-left:12px;border-left:1px solid var(--line2);
   color:var(--dim);font-weight:500}  /* the program whose memory this is: its icon (api/harness) */
 #harness[hidden]{display:none}
+#harness{cursor:pointer}
+#harness:hover{color:var(--fg)}
+#evidence{position:fixed;top:44px;left:12px;z-index:30;max-width:calc(100vw - 24px);padding:12px;border:1px solid var(--line2);border-radius:10px;
+  background:var(--card);box-shadow:0 8px 28px #000a}
+#evidence[hidden]{display:none}
+#evidence .codes{display:flex;flex-wrap:wrap;gap:10px}
+#evidence canvas{width:196px;height:196px;image-rendering:pixelated;background:#fff;border-radius:4px;display:block}
+#evidence figcaption{margin-top:3px;color:var(--dim);font-size:11px;text-align:center}
+#evidence p{margin:8px 0 0;max-width:410px;color:var(--dim);font-size:11px;line-height:1.4;overflow-wrap:anywhere;user-select:all}
 #harness img{width:20px;height:20px;border-radius:6px;display:block}
 .tool{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;color:var(--dim);
   white-space:nowrap;user-select:none;border:1px solid transparent;cursor:pointer}
@@ -221,6 +230,7 @@ body:has(#mea.on) #side{z-index:6}
 .kv dd{margin:0;min-width:0;word-break:break-word}
 .big{font-size:22px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
 </style></head><body>
+<div id="evidence" hidden role="dialog" aria-label="where this view reads from"></div>
 <div id="bar">
   <div id="brand"><b><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="#0b0b0d"><circle cx="12" cy="44" r="5"/><circle cx="26" cy="34" r="5"/><circle cx="38" cy="22" r="5.5"/><circle cx="48" cy="10" r="6"/></g></svg></b>breadcrumbs<span id="harness" hidden><img id="hicon" alt="" width="20" height="20"><span id="hname"></span></span></div>
   <button class="tool" id="home" title="All sessions"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Overview</button>
@@ -297,6 +307,33 @@ function showHarness(r) {
   tab.href = me.icon;
   return true;
 }
+// -- the evidence QR: a click on the harness box shows where this view reads from (store, scope, profile, folder, chat, writer
+// pid, sizes of the last request) as QR codes, because a program that reads the screen can decode them. A long line is
+// chained: the codes are numbered "i/n|". The line holds no crumb text and no token (view.evidence).
+function drawCode(rows) {
+  const n = rows.length, q = 4, c = document.createElement("canvas"), g = c.getContext("2d");
+  c.width = c.height = n + 2 * q;
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.fillStyle = "#000";
+  rows.forEach((r, y) => { for (let x = 0; x < n; x++) if (r[x] === "1") g.fillRect(x + q, y + q, 1, 1); });
+  return c;
+}
+async function showEvidence() {
+  const box = $("evidence");
+  if (!box.hidden) { box.hidden = true; return; }
+  let r;
+  try { r = await api("qr", {sid: ctxPin || ctxSid || "", h: HARNESS.key || ""}); } catch (e) { return; }  // an older server has no route
+  box.replaceChildren();
+  const codes = document.createElement("div"); codes.className = "codes";
+  r.parts.forEach((rows, i) => {
+    const f = document.createElement("figure"), cap = document.createElement("figcaption"); f.style.margin = "0";
+    f.append(drawCode(rows)); cap.textContent = r.parts.length > 1 ? (i + 1) + " / " + r.parts.length : "where this view reads";
+    f.append(cap); codes.append(f);
+  });
+  const p = document.createElement("p"); p.textContent = r.text.slice(r.text.indexOf(" ") + 1);
+  box.append(codes, p); box.hidden = false;
+}
+$("harness").addEventListener("click", showEvidence);
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("evidence").hidden = true; });
 api("harness", {h: HASH.get("h") || ARG.get("h") || ""}).then(showHarness).catch(() => {});  // an older server has no route: the brand stands alone
 
 // -- the graph: a node is a crumb at one place; a part's key is its parent's key + ">" + its slot --
@@ -3373,6 +3410,8 @@ function meaFooter() {
   f.append(el("span", "lg", "Wheel or drag to move, pinch or Ctrl+wheel to zoom the columns, + − 0 from the keyboard."));
 }
 
+// the poll interval in milliseconds: the dial update_ms (view.py fills it in; opened as a file, it is the default 2000)
+const UPDATE_MS = Number("__UPDATE_MS__") || 2000;
 // -- on and off, the frame, the poll ------------------------------------------------------------------------------------------------
 let meaLast = 0;
 function meaFrame(t) {
@@ -3407,7 +3446,7 @@ new MutationObserver(meaSideSync).observe($("side"), {attributes: true, attribut
 new ResizeObserver(() => { MEA.dirty = true; if (MEA.on) meaClamp(false); }).observe($("mew"));
 $("meaon").addEventListener("change", () => meaSet($("meaon").checked));
 for (const id of ["ctxon", "trkon"]) $(id).addEventListener("change", () => { if ($(id).checked && MEA.on) meaSet(false); });
-setInterval(() => { if (MEA.on && !document.hidden && !MDRAG && !MEA.busy && !MEA.loading) meaLoad(true); }, 6000);  // a chat that is running adds lines; not while an answer is on its way
+setInterval(() => { if (MEA.on && !document.hidden && !MDRAG && !MEA.busy && !MEA.loading) meaLoad(true); }, 3 * UPDATE_MS);  // a chat that is running adds lines; not while an answer is on its way
 (function meaInit() {
   const h = k => HASH.get(k);
   if (h("mmeasure")) MEA.measure = h("mmeasure");
@@ -3479,7 +3518,7 @@ function meaDrawUsage(sid, d) {
   box.textContent = ""; box.append(head, grid);
   [box.scrollLeft, box.scrollTop] = keep;
 }
-showTrail(); load(); follow(); setInterval(follow, 2000); setInterval(context, 2000); setInterval(trk, 2000); trk();
+showTrail(); load(); follow(); setInterval(follow, UPDATE_MS); setInterval(context, UPDATE_MS); setInterval(trk, UPDATE_MS); trk();
 const start = HASH.get("focus");
 if (start) setTimeout(() => revealId(start), 600);
 requestAnimationFrame(frame);

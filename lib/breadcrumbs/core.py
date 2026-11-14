@@ -68,12 +68,19 @@ def server_command(kind="mcp", env=None):
 
 
 # -- the stores --------------------------------------------------------------------------------------------
+def _base_of(local):
+    """The base that holds the scope store `local` (<base>/scopes/<id>), or None."""
+    parent = os.path.dirname(local) if local else ""
+    return os.path.dirname(parent) if os.path.basename(parent) == "scopes" else None
+
+
 class Stores:
     """Which stores exist. Names are read at each call: a profile made later shows up."""
 
-    def __init__(self, local=None, root=None):
+    def __init__(self, local=None, root=None, here=False):
         self.root = os.path.abspath(os.path.expanduser(root or "~/.hermes"))
         self.local = os.path.abspath(os.path.expanduser(local)) if local else None
+        self.here = here  # a call that names no store looks in "local" only: the memory of the scope of the folder (sync.py)
 
     @property
     def base(self):
@@ -88,6 +95,12 @@ class Stores:
         for sc in scope.known(self.base):  # the scopes (a git repository, a folder with .breadcrumbs): name = its id
             if sc["id"] not in out and sc["present"]:
                 out[sc["id"]] = sc["path"]
+        other = _base_of(self.local)  # local is a scope of another base (a harness that keeps its own): its memories
+        if other and os.path.realpath(other) != os.path.realpath(self.base):
+            out.setdefault("base", other)
+            for sc in scope.known(other):
+                if sc["id"] not in out and sc["present"] and os.path.realpath(sc["path"]) != os.path.realpath(self.local):
+                    out[sc["id"]] = sc["path"]
         profiles = os.path.join(self.root, "profiles")
         try:
             for name in sorted(os.listdir(profiles)):
@@ -193,6 +206,8 @@ class Core:
         want = params.get("store")
         present = list(self.stores.present())
         if want is None:
+            if self.stores.here and self.stores.local:  # no store named: this folder's memory, and no other one
+                return ["local"] if "local" in present else []
             return present if everywhere else present[:1]
         if want == "*":
             return present
@@ -259,7 +274,8 @@ class Core:
 
     def do_stores(self):
         present = self.stores.present()
-        return {"stores": [{"name": n, "home": h, "present": n in present} for n, h in self.stores.names().items()]}
+        return {"stores": [{"name": n, "home": h, "present": n in present} for n, h in self.stores.names().items()],
+                "default": self.pick({})}  # where a call with no `store` looks
 
     def do_health(self):
         with self._lock:

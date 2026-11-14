@@ -10,7 +10,8 @@ default memory too.
 
     /scope              where this chat is, its memory, the scopes above it and the scopes that exist
     /scope up           the same, and how to read further than this scope (crumb_find scope "up" or "all")
-    /viz                the explorer of the memory of this chat's scope (read-only, on this machine)
+    /viz                the explorer of the whole profile: every Hermes chat of its state.db (imported first) and every scope
+                        (read-only, on this machine). "viz": "scope" in config.json narrows it to this chat's scope.
 
 Off: BREADCRUMBS_SCOPE=off, or "scope": "off" in config.json. Then every chat uses the profile's default memory.
 
@@ -24,7 +25,9 @@ from typing import List, Optional, Tuple
 from breadcrumbs import scope
 
 LOCAL_SURFACES = ("cli", "tui", "desktop", "acp", "local")
-VIZ_HELP = "open the explorer of the memory of this chat's scope (the map, graph, Gantt and Venn; read-only)"
+TERMINAL_SURFACES = ("cli", "tui")  # a chat that starts in a terminal opens the explorer itself (start_viz)
+VIZ_HELP = ("open the explorer of this profile: every Hermes chat and every scope, imported from state.db first "
+            "(the map, graph, Gantt and Venn; read-only)")
 VIZ_DISCLAIMER = ("`/viz` is not for messaging chats (%s). It opens a page on the machine that runs Hermes. "
                   "Use it in a local session.")
 SCOPE_HELP = "where this chat's memory is: its git repository or folder, the scopes above it, the scopes that exist"
@@ -186,11 +189,77 @@ def command(base: str, info: dict, raw_args: str = "") -> str:
 HARNESS = "hermes"  # this program in the harness table (adapter.py): the explorer that /viz opens draws its icon beside the brand
 
 
+def viz_store(base: str, info: dict) -> str:
+    """The store that /viz opens: the profile's base (every scope, and every chat that state.db holds), unless
+    config.json says "viz": "scope" (then the scope of this chat). Hermes is not a secure portal and its names are not
+    stable, so the explorer sees all of the profile; what it shows of it is the viewers' disclosure level and novis,
+    not the folder that the chat happens to run in."""
+    from breadcrumbs import dials
+
+    narrow = str(dials.config(base).get("viz", "")).strip().lower() == "scope"
+    return info["store"] if narrow else base
+
+
+_viz_started = False
+
+
+def start_viz(base: str, before=None, autostart=None) -> bool:
+    """A chat starts in a terminal: open the explorer of the profile once per process (viz.autostart: a split in cmux or
+    tmux, else the OS opens it; BREADCRUMBS_VIZ=0 turns it off). It runs in a thread, because a first server start and the
+    import of state.db (before) can take seconds, and never raises. True when it started the thread."""
+    global _viz_started
+    if _viz_started:
+        return False
+    _viz_started = True
+
+    def work():
+        try:
+            if before is not None:
+                before()
+            from breadcrumbs import viz
+            (autostart or viz.autostart)(base, harness=HARNESS)
+        except Exception:
+            logging.getLogger(__name__).debug("breadcrumbs viz: autostart failed", exc_info=True)
+
+    import threading
+    threading.Thread(target=work, name="breadcrumbs-viz-autostart", daemon=True).start()
+    return True
+
+
+def import_history(home: str, provider=None):
+    """Import the state.db of this profile into the profile's base store before the explorer opens, so that every
+    chat shows (the provider does the same when a chat ends, which a one-shot chat or a crash may never reach).
+    Read-only on state.db, idempotent. With the provider's own store open, it goes through the provider (one writer).
+    A failure is recorded in <base>/ingest.err and returns None: the explorer still opens."""
+    try:
+        if provider is not None and getattr(provider, "store", None) is not None and getattr(provider, "_home", ""):
+            return provider._import_state()
+        db = os.path.join(home, "state.db")
+        if not os.path.exists(db):
+            return None
+        from breadcrumbs import cli
+
+        from .hermes_ingest import ingest_state_db
+        store, index, refs, _zoom = cli.open_all(os.path.join(home, "breadcrumbs"))
+        try:
+            return ingest_state_db(db, store, index, refs)
+        finally:
+            index.close()
+            store.close()
+    except Exception as e:
+        base = os.path.join(home, "breadcrumbs")
+        os.makedirs(base, exist_ok=True)
+        with open(os.path.join(base, "ingest.err"), "a", encoding="utf-8") as f:
+            import time
+            f.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), e))
+        return None
+
+
 def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> str:
     """/viz: the explorer of one store, opened on this machine (viz.run: a cmux split, else the default browser).
     The answer names the place and never the URL: the URL holds the view token. A chat whose profile or session is
     tagged no-vis opens nothing."""
-    from breadcrumbs_spacegraph import viz
+    from breadcrumbs import viz
 
     from . import novis
 
@@ -215,7 +284,7 @@ def register(ctx, provider=None):
     def base_and_info():
         base = os.path.join(current_home(), "breadcrumbs")
         info = getattr(provider, "scope_info", None)
-        from . import dials
+        from breadcrumbs import dials
         return base, info or resolve(base, None, dials.config(base))
 
     def scope_command(raw_args: str = "", session_id: str = "", platform: str = "") -> str:
@@ -225,8 +294,9 @@ def register(ctx, provider=None):
     def viz_command(raw_args: str = "", session_id: str = "", platform: str = "") -> str:
         if platform and platform not in LOCAL_SURFACES:
             return VIZ_DISCLAIMER % platform
-        _, info = base_and_info()
-        return open_viz(info["store"], session_id)
+        base, info = base_and_info()
+        import_history(current_home(), provider)
+        return open_viz(viz_store(base, info), session_id)
 
     ctx.register_command("scope", scope_command, description=SCOPE_HELP, args_hint="[up]")
     ctx.register_command("viz", viz_command, description=VIZ_HELP)

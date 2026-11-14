@@ -9,6 +9,7 @@ import unittest
 
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
+from breadcrumbs import ace_core
 from breadcrumbs_hermes import ace
 
 
@@ -265,8 +266,8 @@ class LayerTest(unittest.TestCase):
 class LargeShareLayerTest(LayerTest):
     """The layer tests again with the shares of a target over SMALL_TARGET (Hermes's 200k)."""
     def setUp(self):
-        small, ace.SMALL_TARGET = ace.SMALL_TARGET, 0
-        self.addCleanup(setattr, ace, "SMALL_TARGET", small)
+        small, ace_core.SMALL_TARGET = ace_core.SMALL_TARGET, 0  # the engine reads it (breadcrumbs/ace_core.py)
+        self.addCleanup(setattr, ace_core, "SMALL_TARGET", small)
         super().setUp()
 
 class EngineTest(unittest.TestCase):

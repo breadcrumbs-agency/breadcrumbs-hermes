@@ -1,6 +1,6 @@
 """The adapter of the package breadcrumbs_spacegraph: it gives the commands that draw to `python -m breadcrumbs`
-(serve, open, viz, term, spacegraph). This layer gives no port: the reader that common needs is breadcrumbs/reader.py,
-and the viewers build on it. ports.load() imports this module by the name of its package (breadcrumbs_*); no module
+(serve, open, term, spacegraph). `viz` is in common (breadcrumbs/viz.py): this layer gives it the ports "explorer",
+"term" and "term_argv". The reader that common needs is breadcrumbs/reader.py, and the viewers build on it. ports.load() imports this module by the name of its package (breadcrumbs_*); no module
 imports it.
 
 Each function imports its module when it is called, not before: a command that draws nothing loads no viewer, and a
@@ -58,14 +58,22 @@ def _open(args, home):
     return launch.run(args.where, home, port=args.port, show=args.show)
 
 
-def _add_viz(sub):
-    p = sub.add_parser("viz", help="open the explorer here: a cmux split, else Kitty/Ghostty, else the browser")
-    p.add_argument("--port", type=int, default=8765)
+def _explorer(home, port=8765, harness=None):
+    """The port "explorer" of common's viz: the URL of this memory's explorer, its server started or reused."""
+    from .launch import explorer_url
+    return explorer_url(home, port, harness)
 
 
-def _viz(args, home):
-    from . import viz
-    return viz.run(home, port=args.port)
+def _term_port(url):
+    """The port "term" of viz: the page drawn in this terminal, or None when it is no Kitty or Ghostty."""
+    from . import kitty, term
+    return term.run(url) if kitty.supported() else None
+
+
+def _term_argv(home, harness=None):
+    """The port "term_argv" of viz: the command line of `term` for this memory (a tmux pane runs it)."""
+    from .launch import term_argv
+    return term_argv(home, harness)
 
 
 def _add_term(sub):
@@ -111,6 +119,8 @@ def _spacegraph(args, home):
 if ports.layer("spacegraph", __file__):
     ports.command("serve", _add_serve, _draws(_serve), before="core")
     ports.command("open", _add_open, _draws(_open), before="core")
-    ports.command("viz", _add_viz, _draws(_viz), before="core")
+    ports.give("explorer", _explorer)  # the explorer of `viz`, which is in common (breadcrumbs/viz.py)
+    ports.give("term", _term_port)
+    ports.give("term_argv", _term_argv)
     ports.command("term", _add_term, _draws(_term), after="help")
     ports.command("spacegraph", _add_spacegraph, _draws(_spacegraph), after="help")

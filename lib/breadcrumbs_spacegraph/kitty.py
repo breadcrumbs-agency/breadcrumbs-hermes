@@ -1,4 +1,4 @@
-"""The Kitty graphics protocol: one PNG on the terminal. Kitty and Ghostty both read it.
+"""The Kitty graphics protocol: one PNG on the terminal. Kitty, Ghostty and WezTerm read it (cmux is a Ghostty window).
 
 image(png, cols) gives the escape text that puts the PNG at the cursor, scaled to cols cells wide. It
 uses image id 1 and placement 1, so the next frame replaces the last one in place (no new image piles up).
@@ -9,7 +9,8 @@ import base64
 import os
 
 CHUNK = 4096
-TERMS = ("kitty", "ghostty")
+TERMS = ("kitty", "ghostty", "wezterm")
+MARKERS = ("KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR", "WEZTERM_PANE")  # set by the terminal, and kept by a shell or a tmux server started in it
 
 
 def image(png: bytes, cols: int = 0, image_id: int = 1) -> str:
@@ -33,6 +34,7 @@ def clear() -> str:
 
 
 def supported(env=os.environ) -> bool:
-    """True in Kitty or Ghostty (TERM xterm-kitty / xterm-ghostty, or TERM_PROGRAM ghostty, or KITTY_WINDOW_ID)."""
+    """True in Kitty, Ghostty (and cmux, which is one) or WezTerm: TERM xterm-kitty / xterm-ghostty, TERM_PROGRAM ghostty or
+    WezTerm, or a variable that the terminal sets (MARKERS)."""
     term = (env.get("TERM", "") + " " + env.get("TERM_PROGRAM", "")).lower()
-    return bool(env.get("KITTY_WINDOW_ID")) or any(t in term for t in TERMS)
+    return any(env.get(m) for m in MARKERS) or any(t in term for t in TERMS)

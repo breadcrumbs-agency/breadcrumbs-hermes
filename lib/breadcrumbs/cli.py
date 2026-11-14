@@ -14,6 +14,8 @@
   pull NAME CID|FILE        fetch a project head from IPFS (or read a CAR file) and join it
   ingest-hermes PROFILE     backfill a profile's state.db (opened read-only)
   ingest HARNESS [PATH]     read the sessions of a harness program into the store (hermes: its state.db)
+  sync HARNESS [PATH]       the same, each session into the memory of the project where it ran (its git repository or
+                            folder: <home>/scopes/<id>; no project: <home>), and the state.db of each memory
   prune-index               drop index rows that older versions made for crumb/crumb_find calls
   install-hermes PROFILE    write the plugin shim into the profile
   scopes [PROFILE]          the scopes of the profile (a git repository or a .breadcrumbs folder), each with its own memory
@@ -42,6 +44,9 @@
 
 PROFILE is a profile name or a HERMES_HOME dir (a path).
 --home defaults to $BREADCRUMBS_HOME, else $HERMES_HOME/breadcrumbs, else ~/.hermes/breadcrumbs.
+--here (or BREADCRUMBS_HERE=1, when no --home is given) takes the home as the base and opens the memory of the scope of
+the current folder in it (sync.py): `core` then looks in that memory only, unless a call names a store.
+BREADCRUMBS_SCOPE=off: no scopes.
 --graal runs the command under GraalPy (see breadcrumbs/runtime.py) when one is found.
 """
 
@@ -53,7 +58,7 @@ import subprocess
 import sys
 import time
 
-from . import ports
+from . import ports, sync
 
 def profile_home(profile):
     root = os.path.expanduser("~/.hermes")
@@ -190,10 +195,11 @@ def ingest_command(args, home):
     return 0
 
 
-def core_command(args, home):
-    """`core mcp|sock|a2a|setup`: the servers of core.py. All are read-only. `home` is --home (None: the default only)."""
+def core_command(args, home, here=False):
+    """`core mcp|sock|a2a|setup`: the servers of core.py. All are read-only. `home` is --home (None: the default only).
+    here: `home` is the memory of the scope of the current folder, and a call that names no store looks only in it."""
     from . import core as corelib
-    stores = corelib.Stores(local=home or os.environ.get("BREADCRUMBS_HOME"))
+    stores = corelib.Stores(local=home or os.environ.get("BREADCRUMBS_HOME"), here=here)
     if args.mode == "setup":
         table = corelib.harnesses()
         names = [args.harness] if args.harness else list(table)
@@ -249,6 +255,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="breadcrumbs", description=__doc__.splitlines()[0])
     ap.add_argument("--home", default=None)
     ap.add_argument("--graal", action="store_true", help="run under GraalPy when it is available")
+    ap.add_argument("--here", action="store_true",
+                    help="the memory of the scope of the current folder, under --home (the base); see sync.py")
     sub = ap.add_subparsers(dest="cmd", required=True)
     given = {c["name"]: c for c in ports.commands()}  # the commands of the layers above: see ports.command
 
@@ -266,6 +274,9 @@ def main(argv=None):
     p = add("bc"); p.add_argument("ref"); p.add_argument("level", nargs="?", type=float, default=0.25)
     p = add("find"); p.add_argument("query"); p.add_argument("k", nargs="?", type=int, default=8)
     p = add("log"); p.add_argument("ref", nargs="?", default="main")
+    p = add("dials", help="every knob and dial with its value and where the value came from (read-only)")
+    p.add_argument("--model", help="the model whose entries of config.json count")
+    p.add_argument("--markdown", action="store_true", help="the tables of README \"Knobs and dials\"")
     add("stats")
     add("verify")
     p = add("summarize"); p.add_argument("refs", nargs="*"); p.add_argument("--all", action="store_true")
@@ -279,6 +290,9 @@ def main(argv=None):
     p = add("ingest", help="read the sessions of a harness program into the store")
     p.add_argument("harness", help="the key of a harness that has a session source (see `core setup`)")
     p.add_argument("path", nargs="?", default=None, help="where the program keeps its sessions (default: its own place)")
+    p = add("sync", help="the sessions of a harness program, each into the memory of the scope where it ran")
+    p.add_argument("harness", help="the key of a harness that has a session source (see `core setup`)")
+    p.add_argument("path", nargs="?", default=None, help="where the program keeps its sessions (default: its own place)")
     add("prune-index")
     p = add("supersede", help="tag crumb OLD as superseded by crumb NEW (--undo: retract the tag)")
     p.add_argument("old"); p.add_argument("new"); p.add_argument("--undo", action="store_true")
@@ -288,6 +302,13 @@ def main(argv=None):
     p = add("vault", help="the memory as an Obsidian vault (export), a vault as crumbs (import)")
     p.add_argument("action", choices=("export", "import")); p.add_argument("dir")
     p.add_argument("--all", action="store_true", help="export: the private crumbs too")
+    p = add("cost", help="the cost profile of a model (costs.py): show, fetch (the task for an LLM that searches the web), "
+                         "template, set FILE [MODEL], remove")
+    p.add_argument("action", choices=("show", "fetch", "template", "set", "remove")); p.add_argument("items", nargs="*")
+    p.add_argument("--provider", default=None, help="fetch: the provider of the model")
+    p = add("viz", help="open the explorer here: a cmux split, else Kitty/Ghostty/WezTerm, else the browser (viz.py)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--where", action="store_true", help="print the terminal found and what viz would do here; open nothing")
     p = add("core", help="the one core of every harness: MCP, A2A or a socket (see breadcrumbs/core.py)")
     p.add_argument("mode", choices=("mcp", "sock", "a2a", "setup"))
     p.add_argument("harness", nargs="?", help="setup: hermes, claude-code, codex or opencode (default: all)")
@@ -313,6 +334,11 @@ def main(argv=None):
     cli_args = list(sys.argv[1:] if argv is None else argv)
     args = ap.parse_args(cli_args)
     home = args.home or default_home()
+    # --here, or BREADCRUMBS_HERE when no --home names the store (a child that a viewer starts is told its store): the memory
+    # of the current folder. sync takes the base: it puts each session where it belongs.
+    focus = (args.here or (args.home is None and sync.here())) and args.cmd != "sync"
+    if focus:
+        home = sync.where(home)
     if args.graal and sys.implementation.name != "graalpy":
         from .runtime import find_graalpy, graal_argv
         exe = find_graalpy()
@@ -325,11 +351,26 @@ def main(argv=None):
     if args.cmd in given:
         return given[args.cmd]["run"](args, home)
     if args.cmd == "core":
-        return core_command(args, args.home)
+        return core_command(args, home if focus else args.home, focus)
     if args.cmd == "ingest":
         return ingest_command(args, home)
+    if args.cmd == "sync":
+        return sync.command(args, home)
     if args.cmd == "hive":
         return hive_main(args, home)
+    if args.cmd == "viz":
+        from . import viz
+        return viz.command(args, home)
+    if args.cmd == "dials":  # read-only
+        from . import dials
+        print(dials.markdown() if args.markdown else "\n".join(dials.show(home, args.model)))
+        return 0
+    if args.cmd == "cost":
+        from . import costs
+        args.file = args.items[0] if args.action == "set" and args.items else None
+        args.model = args.items[-1] if args.items and args.action == "set" and len(args.items) > 1 else (
+            args.items[0] if args.items and args.action != "set" else None)
+        return costs.command(args, home)
 
     if args.cmd == "help":
         ap.print_help()
