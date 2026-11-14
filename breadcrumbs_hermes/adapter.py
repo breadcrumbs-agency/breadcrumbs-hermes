@@ -9,8 +9,7 @@ registration happen once, whichever import comes first.
     commands   ace ingest-hermes scopes seats seat no-vis  (scopes, seats, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
-               icon.png: the breadcrumbs mark (four crumbs that climb, on the brand's gradient tile, from the brand of
-               breadcrumbs-spacegraph view.html), 96 px; ports.image() reads it into the entry as the icon)
+               icon.png: the Hermes Agent app icon (96 px); ports.image() reads it into the entry as the icon)
 
 Each function imports its module when it is called, not before: a command loads only the modules that it needs, and a
 patched name of a module (a test) is read at the call.
@@ -374,6 +373,12 @@ def _source(path):
     return hermes_ingest.sessions(path or os.path.join(cli.profile_home("default"), "state.db"))
 
 
+def _settings(root, action, payload):
+    """The Hermes section of the explorer's settings widget: breadcrumbs as memory provider and context engine."""
+    from . import hermes_settings
+    return hermes_settings.settings(root, action, payload)
+
+
 def _setup(cmd):
     return "# ~/.hermes/config.yaml\nmcp_servers:\n  breadcrumbs:\n    command: %s\n    args: %s" % (
         cmd[0], json.dumps(cmd[1:]))
@@ -397,4 +402,6 @@ if ports.layer("hermes", __file__):
     ports.command("seat", _add_seat, _seat, before="hive")
     ports.command("no-vis", _add_novis, _novis, after="hive", hidden=True)
     ports.harness("hermes", "Hermes", ("hermes",), _setup, order=10, source=_source,
-                  icon=ports.image(__file__, "icon.png"))
+                  icon=ports.image(__file__, "icon.png"), settings=_settings,
+                  repository="https://github.com/breadcrumbs-agency/breadcrumbs-hermes",
+                  pages="https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/")
