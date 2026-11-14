@@ -25,6 +25,7 @@ from typing import List, Optional, Tuple
 from breadcrumbs import scope
 
 LOCAL_SURFACES = ("cli", "tui", "desktop", "acp", "local")
+TERMINAL_SURFACES = ("cli", "tui")  # a chat that starts in a terminal opens the explorer itself (start_viz)
 VIZ_HELP = ("open the explorer of this profile: every Hermes chat and every scope, imported from state.db first "
             "(the map, graph, Gantt and Venn; read-only)")
 VIZ_DISCLAIMER = ("`/viz` is not for messaging chats (%s). It opens a page on the machine that runs Hermes. "
@@ -197,6 +198,32 @@ def viz_store(base: str, info: dict) -> str:
 
     narrow = str(dials.config(base).get("viz", "")).strip().lower() == "scope"
     return info["store"] if narrow else base
+
+
+_viz_started = False
+
+
+def start_viz(base: str, before=None, autostart=None) -> bool:
+    """A chat starts in a terminal: open the explorer of the profile once per process (viz.autostart: a split in cmux or
+    tmux, else the OS opens it; BREADCRUMBS_VIZ=0 turns it off). It runs in a thread, because a first server start and the
+    import of state.db (before) can take seconds, and never raises. True when it started the thread."""
+    global _viz_started
+    if _viz_started:
+        return False
+    _viz_started = True
+
+    def work():
+        try:
+            if before is not None:
+                before()
+            from breadcrumbs import viz
+            (autostart or viz.autostart)(base, harness=HARNESS)
+        except Exception:
+            logging.getLogger(__name__).debug("breadcrumbs viz: autostart failed", exc_info=True)
+
+    import threading
+    threading.Thread(target=work, name="breadcrumbs-viz-autostart", daemon=True).start()
+    return True
 
 
 def import_history(home: str, provider=None):

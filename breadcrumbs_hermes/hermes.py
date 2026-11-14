@@ -20,7 +20,7 @@ import time
 
 from breadcrumbs import dials
 
-from . import workdir
+from . import novis, workdir
 from breadcrumbs import finder, handles, ports, tags
 from breadcrumbs.crc32c import BACKEND
 from breadcrumbs.crumbs import Crumb, get_crumb, put_crumb
@@ -280,6 +280,8 @@ class BreadcrumbsProvider(MemoryProvider):
         self.session_id = session_id or ""
         self.trail = Trail(session=self.session_id)
         self.writable = kwargs.get("agent_context") in (None, "", "primary")
+        if self.writable and kwargs.get("platform") in workdir.TERMINAL_SURFACES and not novis.blocked(self._home, session_id, None):
+            workdir.start_viz(workdir.viz_store(self.home_root, self.scope_info), before=lambda: workdir.import_history(self._home, self))  # the explorer at the start of a terminal chat
         self.summarizer = default_runner() if self.writable else None
         self._horizon_path = os.path.join(self.root, "horizon.json")
         saved = False

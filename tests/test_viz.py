@@ -115,5 +115,54 @@ class VizSeesTheWholeProfile(unittest.TestCase):
         self.assertTrue(os.path.getsize(os.path.join(self.base, "ingest.err")) > 0)
 
 
+class ExplorerAtStart(unittest.TestCase):
+    """A chat that starts in a terminal opens the explorer of the profile once per process (the provider's initialize)."""
+
+    def setUp(self):
+        import tempfile
+
+        from breadcrumbs_hermes import hermes, workdir
+        from tests.test_hermes_ingest import make_db
+        self.hermes, self.workdir = hermes, workdir
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = os.path.join(self.tmp.name, "profiles", "alpha")
+        self.base = os.path.join(self.home, "breadcrumbs")
+        os.makedirs(self.home)
+        make_db(os.path.join(self.home, "state.db"))
+        workdir._viz_started = False
+        self.addCleanup(setattr, workdir, "_viz_started", False)
+
+    def start(self, platform, sid="s1", **kw):
+        import threading
+        calls, done = [], threading.Event()
+
+        def fake_autostart(home, env=os.environ, err=None, harness=None):
+            calls.append((home, harness))
+            done.set()
+
+        with mock.patch.object(viz, "autostart", fake_autostart):
+            for _ in range(2):  # the second chat of the process
+                p = self.hermes.BreadcrumbsProvider()
+                p.initialize(sid, hermes_home=self.home, platform=platform, **kw)
+            done.wait(3)
+        return calls, p
+
+    def test_a_terminal_chat_opens_the_explorer_of_the_profile_once(self):
+        calls, p = self.start("cli")
+        self.assertEqual(calls, [(self.base, "hermes")])
+        self.assertEqual(sorted(n for n in os.listdir(os.path.join(self.base, "refs")) if n.startswith("sess-")), ["sess-s1", "sess-s2"])  # state.db came first
+
+    def test_a_messaging_chat_opens_nothing(self):
+        self.assertEqual(self.start("telegram")[0], [])
+
+    def test_a_forked_agent_opens_nothing(self):
+        self.assertEqual(self.start("cli", agent_context="subagent")[0], [])
+
+    def test_a_no_vis_chat_opens_nothing(self):
+        with mock.patch.object(self.hermes.novis, "blocked", return_value="this chat opted out"):
+            self.assertEqual(self.start("cli")[0], [])
+
+
 if __name__ == "__main__":
     unittest.main()
