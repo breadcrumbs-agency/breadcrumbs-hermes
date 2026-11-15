@@ -6,6 +6,7 @@ registration happen once, whichever import comes first.
     ports      neighbor dial state codebase profile hide blocked  (for the viewers, the hive and the searches)
                price  (the rates of a model, for the cache metrics: breadcrumbs/usage.py)
                ace_join  (each ace.log line with the request that it shaped: ace.join)
+               config_layers  (the config files of each profile and scope, for the explorer's settings: config_layers.py)
     commands   ace ingest-hermes scopes seats seat no-vis  (scopes, seats, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
@@ -21,6 +22,8 @@ import sys
 import time
 
 from breadcrumbs import ports
+
+from .hermescmd import hermes_config  # noqa: F401  (adapter.hermes_config: slot_command calls it)
 
 SHIM = '''r"""breadcrumbs memory provider (plugin shim, written by `python -m breadcrumbs install-hermes`).
 
@@ -60,18 +63,6 @@ PLUGIN_YAML = """name: {name}
 version: 0.0.1
 description: Content-addressed breadcrumb memory with exact provenance and zoom levels 0..1.
 """
-
-
-def hermes_config(profile, *args):
-    """`hermes -p PROFILE config ARGS...`: the last line of its output (Hermes's own notices dropped)."""
-    p = subprocess.run(["hermes", "-p", profile or "default", "config", *args], capture_output=True, text=True,
-                       timeout=120)
-    if p.returncode:
-        if args[:1] == ("get",) and "not set" in (p.stderr or "") + (p.stdout or ""):
-            return ""  # Hermes exits 1 on a key that is not set: that is no value, not a failure
-        raise SystemExit("breadcrumbs: hermes config %s failed: %s" % (" ".join(args), (p.stderr or p.stdout)[-300:]))
-    lines = [line.strip() for line in p.stdout.splitlines() if line.strip() and not line.startswith("hermes:")]
-    return lines[-1] if lines else ""
 
 
 NO_PROVIDER = {"", "none", "null", "builtin", "(not set)"}
@@ -379,6 +370,12 @@ def _settings(root, action, payload):
     return hermes_settings.settings(root, action, payload)
 
 
+def _config_layers(root):
+    """The config files that the explorer of the store at root may show and change (config_layers.py)."""
+    from . import config_layers
+    return config_layers.layers(root)
+
+
 def _setup(cmd):
     return "# ~/.hermes/config.yaml\nmcp_servers:\n  breadcrumbs:\n    command: %s\n    args: %s" % (
         cmd[0], json.dumps(cmd[1:]))
@@ -393,6 +390,7 @@ if ports.layer("hermes", __file__):
     ports.give("blocked", _blocked)
     ports.give("price", _price)
     ports.give("ace_join", _ace_join)
+    ports.give("config_layers", _config_layers)
     ports.command("ace", _add_ace, _ace, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
     ports.command("slot", _add_slot, _slot, after="vault")

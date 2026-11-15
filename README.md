@@ -219,6 +219,12 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
   box opens the evidence view (where this view reads, as QR codes with the JSON beneath), and a click on the breadcrumbs
   mark opens the settings widget, whose Hermes section has two switches: breadcrumbs as `memory.provider` and as
   `context.engine` of the profile (`hermes config`; Revert restores the earlier value).
+  The widget's "Config file" picker lists the `config.json` of every profile of the Hermes root and of each scope of
+  each profile (a profile that opted out with `no-vis` is left out), and says which chats read each one. Hermes runs a
+  chat under the profile of its process, so the CLI, the TUI, the desktop app, the gateway's bots, cron jobs and
+  delegate_task children of a profile all read its file; a chat whose folder is a scope also reads that scope's file,
+  whose values win. The provider, ACE and the model request options all read this same chain
+  (`workdir.config_folders`), and the Hermes section switches the profile of the chosen file.
 - **One core for every harness** (`breadcrumbs/core.py`): six read-only verbs (`find`, `open`, `zoom`, `trail`, `stores`, `health`) over all stores at once (`~/.hermes`, each profile, and `--home` as `local`), held open in one process. Three thin servers carry the same table: `python -m breadcrumbs core mcp` (MCP over stdio), `core sock` (a Unix socket, mode 0600; `--tcp PORT` adds loopback TCP that wants `core.token`) and `core a2a` (A2A 0.3 on 127.0.0.1 with a bearer token). A client names itself (MCP `clientInfo`, the A2A `User-Agent` or `X-Harness`, the `harness` field of a socket request); the core tells Hermes, Claude Code, Codex and OpenCode apart, counts their calls in `health`, and `core setup [HARNESS]` prints the command that adds the MCP server to each one.
 - **The explorer.** It opens a session as a document: turn frames, phase bands, tool and file cards. It draws
   the receipts as a Gantt chart (crumbs by turns; each bar holds the text that the model saw) and a Venn of

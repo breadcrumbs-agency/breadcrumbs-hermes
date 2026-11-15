@@ -70,7 +70,8 @@ def middleware(home):
         try:
             if oauth(provider):
                 return None
-            opts = dials.options(dials.config(os.path.join(home(), "breadcrumbs")), model or request.get("model"))
+            from .workdir import config_chain  # the profile's file, then the chat's scope's (a scope's entry wins)
+            opts = dials.options(config_chain(os.path.join(home(), "breadcrumbs")), model or request.get("model"))
             if not opts:
                 return None
             return {"request": apply(dict(request), opts), "source": "breadcrumbs",

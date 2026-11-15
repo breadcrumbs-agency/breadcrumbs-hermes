@@ -40,9 +40,9 @@ def base_of(root):
 
 
 def _config(profile, *args):
-    from .adapter import hermes_config
+    from . import hermescmd
     try:
-        return hermes_config(profile, *args)
+        return hermescmd.hermes_config(profile, *args)
     except SystemExit as e:  # hermes_config exits on a failed command: the widget gets the reason as a 400
         raise ValueError(str(e))
 

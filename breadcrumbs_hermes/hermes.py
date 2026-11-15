@@ -291,8 +291,9 @@ class BreadcrumbsProvider(MemoryProvider):
             saved = True
         except (OSError, ValueError, KeyError):
             pass
-        cfg = dict(base_cfg, **dials.config(self.root)) if self.root != self.home_root else base_cfg  # a scope may override
-        self._dial(cfg, saved)
+        chain = workdir.config_chain(self.home_root, info=self.scope_info)  # a scope's file over the profile's (dials.resolve)
+        cfg = dict(base_cfg, **dials.config(self.root)) if self.root != self.home_root else base_cfg  # slot, hive: the nearer file's
+        self._dial(chain, saved)
         name = self._slot_name(cfg)
         if self.slot is not None and self.slot.name != name:
             self.slot.call("shutdown")
