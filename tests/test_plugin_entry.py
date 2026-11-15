@@ -110,22 +110,11 @@ class RootPluginTest(unittest.TestCase):
     def test_the_root_registers_the_dispatch_handbook_with_the_tools(self):
         ctx = SkillCtx()
         load_root().register(ctx)
-        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch", "hierarchy"])
+        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch"])
         for name, path, about in ctx.skills:
             self.assertTrue(os.path.isfile(path), path)
             self.assertTrue(0 < len(about) <= 60, about)
         self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")  # only the handbook is named in the prompt
-
-    def test_a_refused_hierarchy_skill_leaves_the_handbook_in_place(self):
-        class RefusesHierarchy(SkillCtx):
-            def register_skill(self, name, path, description="", frontmatter=None):
-                if name == "hierarchy":
-                    raise ValueError("a clash of names")
-                super().register_skill(name, path, description, frontmatter)
-        ctx = RefusesHierarchy()
-        load_root().register(ctx)
-        self.assertEqual([name for name, _, _ in ctx.skills], ["dispatch"])
-        self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")
 
     def test_the_handbook_takes_the_name_that_hermes_gave_the_plugin(self):
         ctx = SkillCtx(name="bcdev")
@@ -260,7 +249,7 @@ class InstallShimTest(unittest.TestCase):
         exec(compile(src, path, "exec"), ns)
         ctx = SkillCtx()
         ns["register"](ctx)
-        self.assertEqual([s[0] for s in ctx.skills], ["dispatch", "hierarchy"])
+        self.assertEqual([s[0] for s in ctx.skills], ["dispatch"])
         self.assertEqual(ctx.providers[0].handbook, "breadcrumbs:dispatch")
 
     def test_the_shim_registers_ace_under_its_own_name_where_the_profile_selects_it(self):
@@ -355,12 +344,13 @@ class HandbookTest(unittest.TestCase):
         with open(hermes.HANDBOOK, encoding="utf-8") as f:
             self.text = f.read()
 
-    def test_it_is_five_lines_and_no_more(self):
-        """The user's rule. Hermes takes the skill's name and description from register_skill, so the
-        file has no front matter."""
+    def test_it_opens_with_the_five_lines_of_the_handbook(self):
+        """The user's rule: the handbook is five lines. They open the skill, which then teaches the lanes. Hermes
+        takes the skill's name and description from register_skill, so the file has no front matter."""
         lines = self.text.splitlines()
-        self.assertEqual(len(lines), 5)
-        self.assertTrue(all(line.strip() for line in lines))
+        self.assertEqual([line[:3] for line in lines[:5]], ["1. ", "2. ", "3. ", "4. ", "5. "])
+        self.assertEqual(lines[5], "")
+        self.assertTrue(lines[6].startswith("# "))
 
     def test_it_teaches_the_least_manufactured_intent_with_exact_pieces(self):
         for words in ("least manufactured intent", "chess pieces", "level 1", "id:a-b", "crumb_find",

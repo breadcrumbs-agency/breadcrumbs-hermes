@@ -1,4 +1,6 @@
-"""The hierarchy skill (breadcrumbs_hermes/skills/hierarchy/SKILL.md): what it promises is checked against the code."""
+"""The dispatch skill (breadcrumbs_hermes/skills/dispatch/SKILL.md: the briefs, then a lane table for each model family
+and the submodel a profile of that family gets): what it promises is checked against the code. The file is generated
+from the umbrella repository (breadcrumbs/skills/dispatch, tools/skills.py), so it is not edited here."""
 import json
 import os
 import re
@@ -15,10 +17,12 @@ from breadcrumbs_hermes import hermes
 SCANNER = ("ignore previous instructions", "ignore all previous", "you are now", "disregard your",
            "forget your instructions", "new instructions:", "system prompt:", "<system>", "]]>")
 VERBS = ("orchestrate", "pinpoint", "scaffold", "dispatch", "fan-out", "inspect", "validate", "trim")
+FAMILIES = ("Claude", "GPT", "NVIDIA")
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 
 def skill():
-    with open(hermes.HIERARCHY, encoding="utf-8") as f:
+    with open(hermes.HANDBOOK, encoding="utf-8") as f:
         return f.read()
 
 
@@ -30,26 +34,47 @@ def block(kind, holding=""):
     raise AssertionError("no %s block holding %r" % (kind, holding))
 
 
-class HierarchySkillTest(unittest.TestCase):
-    def test_the_frontmatter_names_the_skill_and_holds_the_registered_description(self):
-        head = re.match(r"---\n(.*?)\n---\n", skill(), re.S)
-        assert head is not None
-        fields = dict(line.split(": ", 1) for line in head.group(1).splitlines())
-        self.assertEqual(fields["name"], "hierarchy")
-        self.assertEqual(fields["description"], hermes.HIERARCHY_ABOUT)
-        self.assertTrue(0 < len(hermes.HIERARCHY_ABOUT) <= 60)
+def submodels():
+    """{family title: {key: value}} from the `hermes config set delegation.*` block of each family."""
+    out = {}
+    for title, text in re.findall(r"(?m)^(\w+) profile:\n\n```sh\n(.*?)\n```", skill(), re.S):
+        out[title] = dict(re.findall(r"hermes config set delegation\.(\w+) (\S+)", text))
+    return out
 
-    def test_every_verb_of_the_lanes_is_taught(self):
+
+def rows():
+    """The cells of each row of the lane tables."""
+    return [[c.strip() for c in line.strip("|").split("|")] for line in skill().splitlines()
+            if line.startswith("| ") and not line.startswith("| lane ")]
+
+
+class DispatchSkillTest(unittest.TestCase):
+    def test_it_opens_with_the_briefs_and_its_description_fits(self):
+        self.assertTrue(skill().startswith("1. Align the least manufactured intent"))
+        self.assertTrue(0 < len(hermes.HANDBOOK_ABOUT) <= 60)
+
+    def test_every_verb_is_taught(self):
         body = skill().lower()
         for verb in VERBS:
-            self.assertIn(verb, body)
+            self.assertIn(verb, body, verb)
+
+    def test_each_family_gives_a_profile_its_cheap_lane_as_submodel(self):
+        found = submodels()
+        self.assertEqual(sorted(found), sorted(FAMILIES))
+        cheap = [r for r in rows() if r[0] == "cheap"]
+        self.assertEqual(len(cheap), len(FAMILIES))
+        for title, keys in found.items():
+            self.assertEqual(sorted(keys), ["model", "provider", "reasoning_effort"], title)
+            self.assertIn(keys["reasoning_effort"], EFFORTS)
+            self.assertTrue(any(r[2].split(",")[0] == keys["model"] and r[3] == keys["reasoning_effort"] for r in cheap),
+                            (title, keys))
 
     def test_it_holds_no_price_step_and_no_ceiling(self):
         """A step and a ceiling are read from the dials when the skill is used, so the text cannot go stale on them.
         The numbers come from the dials here, not from this test."""
-        body = skill()
         numbers = set(dials.PRICE_STEPS.values()) | {o["ace_ceiling"] for o in dials.MODELS.values()}
         self.assertTrue(numbers)
+        body = skill()
         for n in numbers:
             for form in (str(n), "{:,}".format(n)):
                 self.assertNotIn(form, body)
@@ -59,14 +84,14 @@ class HierarchySkillTest(unittest.TestCase):
         for pattern in SCANNER:
             self.assertNotIn(pattern, body)
 
-    def test_the_dial_example_is_a_valid_config_and_gears_the_lanes_it_names(self):
+    def test_the_dial_example_is_a_valid_config_and_gears_the_top_lanes(self):
         cfg = json.loads(block("json"))
         self.assertEqual(dials.unknown(cfg), [])
-        gear = lambda model: dials.value(cfg, model, "ace_lockup", {})
-        self.assertTrue(gear("claude-fable-5-2"))
-        self.assertTrue(gear("claude-opus-5-5"))
-        self.assertFalse(gear("claude-sonnet-5-5"))
-        self.assertFalse(gear("claude-haiku-5-5"))
+        for r in rows():
+            if r[0].startswith("|---") or set(r[0]) <= {"-"}:
+                continue
+            model = r[2].split(",")[0]
+            self.assertEqual(bool(dials.value(cfg, model, "ace_lockup", {})), "(top)" in r[0], r)
         # the cheap lane needs nothing set: its ceiling is built in
         self.assertEqual(dials.value(cfg, "claude-haiku-5-5", "ace_ceiling", {}),
                          next(iter(dials.MODELS.values()))["ace_ceiling"])
@@ -96,10 +121,10 @@ class HierarchySkillTest(unittest.TestCase):
                 f.write("\n".join(lines) + "\n")
             done = subprocess.run([sys.executable, "-", log, "100000"], input=code, capture_output=True, text=True, timeout=60)
         self.assertEqual(done.returncode, 0, done.stderr)
-        rows = {line.split()[0]: line.split() for line in done.stdout.splitlines()}
-        self.assertEqual(rows["cheap"][2], "2")    # requests
-        self.assertEqual(rows["cheap"][-1], "1")   # one of them over the ceiling
-        self.assertEqual(rows["lead"][-1], "0")
+        out = {line.split()[0]: line.split() for line in done.stdout.splitlines()}
+        self.assertEqual(out["cheap"][2], "2")    # requests
+        self.assertEqual(out["cheap"][-1], "1")   # one of them over the ceiling
+        self.assertEqual(out["lead"][-1], "0")
 
 
 if __name__ == "__main__":

@@ -92,19 +92,16 @@ HIVE_BLOCK = ("\n- With hive peers, crumb_find also shows a \"\u25c7 hive\" line
 # The delegation and dispatch handbook goes with the tool descriptions: a plugin skill that Hermes lists as
 # <plugin>:dispatch (register_handbook), named again in the prompt block under the tools.
 HANDBOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "dispatch", "SKILL.md")
-HANDBOOK_ABOUT = "Use when you delegate or dispatch work. Send exact crumbs."
-# The hierarchy skill goes beside it, as <plugin>:hierarchy: one lead and three lanes of models, the dials of each
-# lane, the sub-sessions, and the project that several gateways share. Hermes lists it in the skills index with its
-# description; the prompt block under the tools does not name it, so that block stays as long as it was.
-HIERARCHY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "hierarchy", "SKILL.md")
-HIERARCHY_ABOUT = "Use when you split work across models. Lanes, dials, hive."
+HANDBOOK_ABOUT = "Use when you delegate work. Exact crumbs, model lanes."
+# The same skill teaches the lanes (one lead and three lanes of models, a table and model_map routes for each
+# family). It is generated in the umbrella repository (breadcrumbs/skills/dispatch, tools/skills.py), never edited here.
 HANDBOOK_LINE = ("\n- Before you give work to a helper (delegate_task, message_agent, a cron job), read "
                  "skill_view(\"%s\"). It tells how to send exact crumbs, not your own words for them.")
 
 
 def register_handbook(ctx, provider):
-    """Register the handbook with the tools, and the hierarchy skill after it. A Hermes without plugin skills gets no
-    skill and no prompt line."""
+    """Register the handbook (the briefs and the lanes) with the tools. A Hermes without plugin skills gets no skill
+    and no prompt line."""
     if not hasattr(ctx, "register_skill"):
         return
     try:
@@ -113,10 +110,6 @@ def register_handbook(ctx, provider):
         return
     plugin = getattr(ctx, "name", None) or getattr(getattr(ctx, "manifest", None), "name", None)
     provider.handbook = "%s:dispatch" % (plugin or "breadcrumbs")
-    try:  # the second skill never takes the first one down: a refusal leaves the handbook and its prompt line in place
-        ctx.register_skill("hierarchy", HIERARCHY, HIERARCHY_ABOUT)
-    except Exception:
-        pass
 
 
 def register_handles(ctx):
