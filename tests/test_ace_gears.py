@@ -115,7 +115,7 @@ class LogFieldsTest(Kit):
         self.ask(e, msgs)
         want = int(e.tpb * 5 * 1400)
         self.assertEqual(int(self.field("think")), want)
-        self.assertEqual(want, 2100)
+        self.assertEqual(want, int(ace.TPB * 7000))  # 5 steps of 1,400 characters at the prior
         stored = [dict(m, reasoning_details=json.dumps(m["reasoning_details"])) if "reasoning_details" in m else m for m in msgs]
         self.ask(e, stored)  # state.db keeps the details as JSON text: the same count
         self.assertEqual(int(self.field("think")), want)
