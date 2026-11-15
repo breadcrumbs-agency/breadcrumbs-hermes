@@ -51,7 +51,7 @@ except Exception:  # outside Hermes (tests, CLI): same methods, no base class
 SYSTEM_BLOCK = """## Breadcrumbs memory
 Past turns and memory entries are kept exactly, under content ids. A line "\u25b8 <id> ..." (handle) or "\u22ef <id>:a-b" (omitted lines) is a breadcrumb.
 - crumb(id, level): show a breadcrumb at a level from 0 (handle only) to 1 (all of it, verbatim). A handle shows the full size as "\u00b7Nt" (N tokens). Pick a level that shows a few hundred tokens, about 400 / N, then expand only the parts you need. Below level 1 a text shows its key words in text order (the most distinct words first, then the meaningful words); "\u2026" marks dropped words. Grammar words and exact wording come back only at level 1. A "sum" crumb is a summary that a small model wrote; its sources are exact. A session or span handle ends with cue words after "|": the words it uses more than the rest of the memory, in order of first use.
-- crumb_find(q): search all breadcrumbs by words. It returns each hit under the handle of its session.
+- crumb_find(q): search all breadcrumbs by words. It is the least-cost first check for anything already decided or written down (procedures, conventions, plans): search before reading files or git history. Each hit comes with the crumbs around it. It returns each hit under the handle of its session.
 The ids are the provenance. Cite them when you use a recalled fact."""
 
 TOOLS = [
@@ -67,9 +67,12 @@ TOOLS = [
                     "required": ["id", "level"]}},
     {"name": "crumb_find",
      "description": "Search the breadcrumbs of this chat's scope (its git repository or folder: past turns, memory "
-                    "entries) by words. Returns handles, each hit under its session handle; expand one with "
-                    "crumb(id, level). scope \"up\" also reads the scopes above this one and the default memory; "
-                    "scope \"all\" reads every scope of the profile.",
+                    "entries) by words. The least-cost place to check first: decisions, procedures, conventions and "
+                    "plans that were already written down are usually here, so search before reading files, "
+                    "git history or the web. Each hit comes with the crumbs around it "
+                    "(its neighbouring turns), often enough to answer without a file read. Returns handles, each hit "
+                    "under its session handle; expand one with crumb(id, level). scope \"up\" also reads the scopes "
+                    "above this one and the default memory; scope \"all\" reads every scope of the profile.",
      "parameters": {"type": "object",
                     "properties": {"q": {"type": "string"},
                                    "k": {"type": "integer", "minimum": 1, "maximum": 20},
