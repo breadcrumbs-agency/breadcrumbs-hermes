@@ -1538,7 +1538,7 @@ class MeasuresPageTest(unittest.TestCase):
         self.assertEqual(foot.count("meaFits("), 1, "the total of a column")
 
     def test_the_panel_asks_for_numbers_from_one_route_only(self):
-        mine = self.page.split("// -- measures: a matrix")[1]
+        mine = self.page.split("// -- measures: a matrix")[1].split("// -- on and off, the frame, the poll")[0]  # the poll is not the panel
         self.assertEqual(set(re.findall(r'api\("(\w+)"', mine)), {"measures"})
         self.assertNotIn("api(\"crumb\"", mine.split("// -- the Size panel, for a chat")[0])
         self.assertNotRegex(mine, r"https?://", "no outside address")
@@ -2072,7 +2072,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sorted(view.API), ["/api/ace", "/api/context", "/api/crumb", "/api/find", "/api/graph",
                                             "/api/path", "/api/session", "/api/trail", "/api/venn"])
         # the explorer's own routes (the Measures panel, the calendar layout): the dashboard table (tests/test_dashboard.py) is not changed by them
-        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/harness", "/api/measures", "/api/measures/labels", "/api/qr", "/api/settings", "/api/where"])
+        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/changes", "/api/harness", "/api/measures", "/api/measures/labels", "/api/qr", "/api/settings", "/api/where"])
 
 if __name__ == "__main__":
     unittest.main()

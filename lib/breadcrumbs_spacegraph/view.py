@@ -29,8 +29,9 @@ from breadcrumbs.ingest import leaves
 from breadcrumbs.lines import decode_spine
 from breadcrumbs.metrics import metric
 from breadcrumbs.reader import Reader, Trail  # Trail: tests/test_view.py and hermes.py read view.Trail
-from breadcrumbs.usage import AFTER, AFTER_KEYS, CACHE, KEYS as CACHE_KEYS, after as after_values, rank as act_rank, \
+from breadcrumbs.usage import AFTER, AFTER_KEYS, CACHE, COST_KEYS, KEYS as CACHE_KEYS, after as after_values, rank as act_rank, \
     rates as cache_rates, values as cache_values
+from breadcrumbs.usage import LEASE_TTL, leases as usage_leases, lease_totals
 from breadcrumbs.zoom import CUED, GAP, Zoom, parse_ref  # Zoom: tests/test_view.py reads view.Zoom
 
 from .harness import info as harness_info
@@ -38,12 +39,27 @@ from .harness import info as harness_info
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "view.html")
 
 
-def page(root=None):
-    """The explorer page as bytes, with its poll interval from the dial update_ms of the store at root (dials.top)."""
+def viz_dials(root=None, layers=()):
+    """The viewer's two dials for one namespace: (update_ms, live). Shared by the page (baked in at load) and by the
+    live stamp (api/changes), so a change in any file of the chain reaches the page through the same rule.
+
+    layers: the config folders of a namespace (scope), widest first, ending with the scope's own folder (the
+    config_layers of the view, resolved through parent). They resolve as a chain: each later file beats the earlier
+    one at each dial, the profile's top level first. With no layers the store's top level is read (dials.top)."""
+    if not layers:
+        return dials.top(root, "update_ms"), dials.top(root, "live")
+    chain = [("profile", {k: v for k, v in dials.config(root).items() if k != "models"} if root else {})]
+    chain += [("scope", dials.config(folder)) for folder in layers if folder]
+    return dials.value(chain, None, "update_ms"), dials.value(chain, None, "live")
+
+
+def page(root=None, layers=()):
+    """The explorer page as bytes, with its poll interval (dial update_ms) and its live switch (dial live).
+    See viz_dials for how the layers resolve."""
     with open(PAGE, encoding="utf-8") as f:
         html = f.read()
-    ms = dials.top(root, "update_ms")
-    return html.replace("__UPDATE_MS__", str(ms)).encode("utf-8")
+    ms, live = viz_dials(root, layers)
+    return html.replace("__UPDATE_MS__", str(ms)).replace("__LIVE__", "1" if live else "0").encode("utf-8")
 HEAT_HALF = 86400.0  # seconds: the glow of a crumb the model opened halves each day
 ACE_LOG = ("ace.log.1", "ace.log")  # oldest first
 ACE_KV = re.compile(r"(\w+)=(\S+)")
@@ -278,6 +294,23 @@ def usage_requests(root):
             row.update(line=line, file=name, no=no)
             out.append(row)
     return out
+
+
+LEASE_KEYS = ("id", "up", "lo", "hi", "start", "last", "end", "why", "reads", "tier", "store_usd", "unseen")  # of a lease, for the page
+MARK_KEYS = ("ts", "at", "cr", "cw", "inp", "kind", "read", "wrote", "tier", "store_usd", "read_usd")  # of a request
+
+
+def side_of(row):
+    """The second agent that sent a request (a row of usage_requests), or "" for the chat itself. A harness can run
+    another agent on the session id of a chat (Hermes: the review of a turn). Then usage.log holds that agent's requests
+    under the chat's id, and only the turn id tells them apart: Hermes names a turn <session>:<task>:<n>, and the task of
+    the chat's own turns is the session id. -> the first characters of the other agent's task; "" for a turn id of
+    another form."""
+    sess, turn = row.get("sess") or "", row.get("turn") or ""
+    if not sess or not turn.startswith(sess + ":"):
+        return ""
+    task = turn[len(sess) + 1:].rpartition(":")[0]
+    return "" if not task or task == sess else task[:8]
 
 
 def _state(path, run, connect=None):
@@ -938,7 +971,8 @@ class _Measures:
         wanted = [m for m in CACHE_KEYS if m in self.want]
         if not wanted or not rows or self.unit not in ("time", "request"):
             return acc
-        for r, vals in zip(rows, cache_values(rows, cache_rates if "cache_saved_usd" in wanted else None)):
+        usd_wanted = any(m in self.want for m in ("cache_saved_usd",) + COST_KEYS)
+        for r, vals in zip(rows, cache_values(rows, cache_rates if usd_wanted else None)):
             self.put_request(acc, sid, r, vals, wanted)
         return acc
 
@@ -1262,11 +1296,15 @@ class _Measures:
             total = {}
             for r in self.top:  # the lineage roots hold everything below them: this is the grand total, in either mode
                 _roll(total, self.incl[r], self.agg)
+            # usage.log lines with no session (sess=-: compression, goal_judge) belong to no root, but their tokens were spent
+            _roll(total, _nums(self.facts_usage("-")), self.agg)
+            _roll(total, _nums(self.facts_cache("-")), self.agg)
             totals = [[k[1], k[0], self.num(v, k[1]), k[2], k[3]] + ([list(v)] if self.agg[k[1]] == "ratio" else [])
                       for k, v in sorted(total.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2] or "", kv[0][3] or ""))
                       if self.num(v, k[1]) is not None or self.agg[k[1]] != "ratio"]
         lines = self.build_lines() if self.want_lines and self.focus else None
         has = {"db": self.db is not None, "cost": self.db is not None, "usage": bool(self.use_by), "ace": bool(self.ace_by),
+               "cache_cost": bool(self.use_by),
                "rcpt": any(self.events_of(s["sid"]) for s in self.S.values() if s["ref"]),
                "store": any(s["ref"] for s in self.S.values())}
         return {"unit": self.unit, "bucket": self.kind if self.unit == "time" else "", "focus": self.focus,
@@ -1551,7 +1589,50 @@ class View(Reader):
                                                    key=len, default="") if want else newest
             pts = series.get(hit, [])
             return {"current": newest, "session": hit, "target": next((p["target"] for p in reversed(pts) if p["target"]), None),
-                    "points": pts, "candles": ace_candles(pts, per), "mix": ace_mix(pts), "all": ace_totals(series)}
+                    "points": pts, "candles": ace_candles(pts, per), "mix": ace_mix(pts), "all": ace_totals(series),
+                "leases": self.leases_of(hit)}
+
+    def leases_of(self, hit):
+        """The cache of the session that the size view shows, as leases (usage.log, main requests; breadcrumbs/usage.py
+        leases). items: one per lease in the order written, with LEASE_KEYS and side; marks: one per request in the
+        order that they began, with MARK_KEYS, n (the number of the request in its turn) and side. side: the second
+        agent that sent the request, "" for the chat itself (side_of). ttl: the seconds that a lease of this session
+        lasts after its last read (read off its requests); now: the time of this answer (a lease that ends after it is
+        open); steps: [[prompt size, times]] where the price of the model steps up, and by how much for a cache write;
+        sides: {side: {requests, write_tok, store_usd}}; totals: lease_totals (the money at the price port's rates).
+        hit is the session id of ace.log, which may be a prefix of the full id. Reads only."""
+        now = time.time()
+        if not hit:
+            return {"ttl": LEASE_TTL, "now": now, "items": [], "marks": [], "steps": [], "sides": {}, "totals": None}
+        by = {}
+        for r in usage_requests(self.base):
+            by.setdefault(r["sess"], []).append(r)
+        rows = [r for sid, rs in by.items() if sid.startswith(hit) or hit.startswith(sid) for r in rs]
+        found, marks, orphan = usage_leases(rows, now=now)
+        by_req = {r["req"]: r for r in rows if r["req"]}
+        # a second agent is told from the chat only where the chat's own turns have the form that side_of reads
+        known = any((r["turn"] or "").startswith("%s:%s:" % (r["sess"], r["sess"])) for r in rows)
+        side = lambda req: side_of(by_req[req]) if known and req in by_req else ""
+        num = lambda x: round(x, 6) if isinstance(x, float) else x
+        items = [dict({k: num(ls[k]) for k in LEASE_KEYS}, side=side(ls["req"])) for ls in found]
+        out, sides = [], {}
+        for mk in marks:
+            row, tag = by_req.get(mk["req"]), side(mk["req"])
+            out.append(dict({k: num(mk[k]) for k in MARK_KEYS}, n=row["n"] if row else 0, side=tag))
+            if tag:
+                s = sides.setdefault(tag, {"requests": 0, "write_tok": 0, "store_usd": 0.0})
+                s["requests"] += 1
+                s["write_tok"] += mk["cw"]
+                s["store_usd"] = round(s["store_usd"] + (mk["store_usd"] or 0.0), 6)
+        steps = {}
+        for at in {(r["model"], r["prov"]) for r in rows if r["task"] == "main"}:
+            price = cache_rates(*at)
+            if isinstance(price, list):
+                for (upto, low), (_, high) in zip(price, price[1:]):
+                    if upto and low[2] > 0:
+                        steps[upto] = round(high[2] / low[2], 2)
+        return {"ttl": found[0]["ttl"] if found else LEASE_TTL, "now": now, "items": items, "marks": out,
+                "steps": sorted(steps.items()), "sides": sides, "totals": lease_totals(found, marks, orphan)}
 
     def evidence(self, sid=None, harness=""):
         """The evidence QR of the harness box: where() as one compact line, cut into codes that each hold what one QR holds (a
@@ -1706,32 +1787,100 @@ class View(Reader):
                     out[ref] = ref
         return out
 
+    def chain_paths(self, item=None):
+        """The config folders of a file's chain, widest first (its parent first, the file last). item: a config_layers
+        entry; default: the one that is this chat's ("here"). The page and the live stamp both resolve through this."""
+        layers = self.config_layers()
+        by_id = {it["id"]: it for it in layers}
+        cur = item or next(it for it in layers if it.get("here"))
+        chain, seen = [], set()
+        while cur and cur["id"] not in seen:
+            seen.add(cur["id"])
+            chain.append(cur)
+            cur = by_id.get(cur.get("parent"))
+        return chain
+
+    def changes(self):
+        """What changed in the data of this view, for the live page: a stamp of this store (index.db and refs), of the
+        harness logs of this profile (ace.log, usage.log in the base), and of each config file in this chat's chain (the
+        scope's file and its profile's, the files settings resolves here). Files of other profiles and scopes are not
+        stamped. A stamp is the file's modification time and size, so nothing is read or parsed; the page reloads only
+        the part that changed. "viz" is the two viewer dials as the page resolves them (see viz_dials)."""
+        def sig(*paths):
+            out = []
+            for p in paths:
+                try:
+                    st = os.stat(p)
+                    out.append("%d:%d" % (st.st_mtime_ns, st.st_size))
+                except OSError:
+                    out.append("-")
+            return "|".join(out)
+
+        chain = self.chain_paths()
+        ms, live = viz_dials(self.root, [c["path"] for c in reversed(chain)])
+        return {"scope": scopes.scope_id(self.root), "profile": os.path.basename(os.path.dirname(self.base)),
+                "store": sig(os.path.join(self.root, "index.db"), os.path.join(self.root, "refs")),
+                "logs": sig(os.path.join(self.base, "ace.log"), os.path.join(self.base, "usage.log")),
+                "config": {c["id"]: sig(os.path.join(c["path"], "config.json")) for c in chain},
+                "viz": {"update_ms": int(ms), "live": bool(live)}}
+
+    def config_layers(self):
+        """The config files that this view may show and change (the port "config_layers" of the harness), each with
+        its id, label, folder, parent and the chats that read it. With no harness that gives the port: this store's own
+        config.json. A write goes only to a file of this list, chosen by its id; the page never names a path."""
+        port = ports.get("config_layers")
+        got = [dict(item) for item in (port(self.root) if port else None) or () if isinstance(item, dict)]
+        if not any(item.get("here") for item in got):
+            got.insert(0, {"id": "store", "kind": "store", "label": "this memory", "path": self.root, "parent": None,
+                           "applies": "the chats that write this memory", "here": True})
+        for item in got:
+            item["exists"] = os.path.isfile(os.path.join(item["path"], "config.json"))
+        return got
+
     def settings(self, action="get", payload=None):
-        """Read or mutate common dials plus the selected harness's optional settings port."""
+        """Read or mutate common dials plus the selected harness's optional settings port.
+
+        payload["layer"] names the config file (an id of config_layers; default: this store's). Its values resolve
+        through its parent first (a scope's file over its profile's), as the harness reads them for a chat there. The
+        environment of this viewer is left out: a harness process has its own, which wins over every file."""
         payload = dict(payload or {})
         model = payload.get("model") or ""
         target = payload.get("target", "common")
-        if action == "get" or target == "harness":
-            common = dials.settings(self.root, model)
+        layers = self.config_layers()
+        by_id = {item["id"]: item for item in layers}
+        layer_id = str(payload.get("layer") or next(item["id"] for item in layers if item.get("here")))
+        if layer_id not in by_id:
+            raise ValueError("unknown config file: %s" % layer_id)
+        layer = by_id[layer_id]
+        parent = by_id.get(layer.get("parent"))
+        chain = ([(parent["kind"], parent["path"])] if parent else []) + [(layer["kind"], layer["path"])]
+        folder = layer["path"]
         if target == "common" and action == "set":
-            common = dials.set_setting(self.root, payload.get("key"), payload.get("value"), model)
+            dials.set_setting(folder, payload.get("key"), payload.get("value"), model)
         elif target == "common" and action == "delete":
-            common = dials.delete_setting(self.root, payload.get("key"), model)
+            dials.delete_setting(folder, payload.get("key"), model)
         elif target == "common" and action == "reset":
-            common = dials.reset_settings(self.root, model, bool(payload.get("all_models")))
+            dials.reset_settings(folder, model, bool(payload.get("all_models")))
         elif action != "get" and target != "harness":
             raise ValueError("unknown settings action: %s" % action)
+        common = dials.settings_chain(chain, model, environ={})
 
         requested = str(payload.get("harness") or payload.get("h") or "").strip()
         here = harness_info(requested).get("here")
         entry = ports.harnesses().get(here) if here else None
         custom = entry.get("settings") if entry else None
+        # The harness section belongs to the profile of the chosen file (its parent for a scope), not to the store
+        # that this view happens to show.
+        owner = (parent or layer)["path"]
         # A common-dial mutation must never be forwarded as a harness setting
         # mutation.  The widget needs the current harness section in the same
         # response, so read it while the common target is being edited.
-        harness = (custom(self.root, action, payload) if custom and target == "harness"
-                   else custom(self.root, "get", payload) if custom else None)  # ports.settings(root, action, payload)
-        return {"common": common, "harness": harness, "harness_key": here}
+        harness = (custom(owner, action, payload) if custom and target == "harness"
+                   else custom(owner, "get", payload) if custom else None)  # ports.settings(root, action, payload)
+        return {"common": common, "harness": harness, "harness_key": here, "layer": layer_id,
+                "layers": [dict({k: item.get(k) for k in ("id", "kind", "label", "parent", "applies", "here", "exists",
+                                                          "profile")}, path=os.path.join(item["path"], "config.json"))
+                           for item in layers]}
 
     def _edge_ts(self, ref, last):
         """The time of the first (or last) leaf of a crumb: the way down follows one kid, so it reads a few crumbs, not the tree."""
@@ -1823,6 +1972,7 @@ EXPLORER_API = {
     "/api/qr": lambda v, q: v.evidence(q.get("sid") or None, q.get("h") or ""),  # the codes of the evidence line (view.evidence)
     "/api/harness": lambda v, q: harness_info(q.get("h") or None),  # the program of this view and the icons: the mark beside the brand
     "/api/settings": lambda v, q: v.settings("get", q),
+    "/api/changes": lambda v, q: v.changes(),  # the live page: which of its data changed (store, logs, this chat's config)
 }
 
 
@@ -1839,7 +1989,17 @@ def make_server(root, port=8765, host="127.0.0.1"):
             url = urlsplit(self.path)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if url.path in ("/", "/index.html"):
-                return self._send(200, "text/html; charset=utf-8", page(root))
+                # The page resolves the chain of the chosen file (layer=), else of this chat's file: the same chain
+                # the live stamp (api/changes) reads, so the dials baked in here and the stamp agree.
+                layer = q.get("layer")
+                if layer:
+                    by_id = {item["id"]: item for item in view.config_layers()}
+                    if layer not in by_id:
+                        return self._send(404, "application/json", b'{"error": "unknown config file"}')
+                    folders = [c["path"] for c in reversed(view.chain_paths(by_id[layer]))]
+                else:
+                    folders = [c["path"] for c in reversed(view.chain_paths())]
+                return self._send(200, "text/html; charset=utf-8", page(root, folders))
             if url.path not in routes:
                 return self._send(404, "application/json", b'{"error": "not found"}')
             if not hmac.compare_digest(q.get("k", ""), key):

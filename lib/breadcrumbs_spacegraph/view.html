@@ -48,6 +48,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #settings-panel input,#settings-panel select{height:27px;padding:0 7px;border:1px solid var(--line2);border-radius:6px;background:var(--bg);color:var(--fg);font:12px var(--mono)}
 #settings-panel input[type=checkbox]{height:16px;width:16px;accent-color:var(--accent)}
 #settings-panel .settings-bar input{width:180px}
+#settings-panel .settings-bar select#settings-layer{max-width:340px}
 #settings-panel .settings-actions{display:flex;gap:6px;margin-left:auto}
 #settings-panel .settings-group{margin:12px 0 16px}
 #settings-panel .settings-group h4{margin:0 0 4px;font-size:11px;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
@@ -188,6 +189,19 @@ canvas{display:block;width:100vw;height:100vh}
 .pn{position:relative;padding:9px 12px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--card);min-width:0}
 .pn.w2{grid-column:span 2}
 .tk.c2 .pn.w2,.tk.c1 .pn.w2{grid-column:1/-1}
+.pn.w3{grid-column:1/-1}
+.cz{display:block;cursor:crosshair;touch-action:pan-y}
+.cz.drag{cursor:grabbing}
+.czb{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:2px 0 6px}
+.czb .seg{height:24px}
+.czb .lb{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--dim);margin-left:6px}
+.czb .lb:first-child{margin-left:0}
+.czb .h{color:var(--dim);font-size:11px;margin-left:6px}
+.key.kz span{cursor:pointer;user-select:none;border-radius:4px}
+.key.kz span:hover{color:var(--fg)}
+.key.kz span:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.key.kz span.off{opacity:.4;text-decoration:line-through}
+.pn .s.czf{margin:7px 0 0}
 .pn h5{margin:0 0 1px;font-size:12px;font-weight:600}
 .pn .s{color:var(--dim);font-size:11.5px;margin-bottom:6px}
 .pn svg{display:block;max-width:100%;overflow:visible}
@@ -274,8 +288,9 @@ body:has(#mea.on) #side{z-index:6}
 <div id="evidence" hidden role="dialog" aria-label="where this view reads from"></div>
 <section id="settings-panel" hidden role="dialog" aria-label="Breadcrumbs settings">
   <header><h3>Breadcrumbs settings</h3><button class="x" id="settings-close" title="Close settings">&times;</button></header>
-  <div class="settings-note">Common Breadcrumbs dials are stored with this memory. Harness settings stay separate and are shown below when the active harness provides them.</div>
+  <div class="settings-note">Common Breadcrumbs dials live in config.json files: one for each profile, and one for each scope (a git repository or folder) that a chat of the profile worked in. Pick the file; a scope's file is read after its profile's. Harness settings stay separate and are shown below when the active harness provides them.</div>
   <div class="settings-bar">
+    <label>Config file <select id="settings-layer" title="Which config.json: a profile's, or a scope's (its git repository or folder)"></select></label>
     <label>Model <input id="settings-model" placeholder="profile-wide"></label>
     <div class="settings-actions">
       <button class="btn" id="settings-reload">Reload</button>
@@ -283,6 +298,7 @@ body:has(#mea.on) #side{z-index:6}
       <button class="btn" id="settings-reset-all">Reset all dials</button>
     </div>
   </div>
+  <div id="settings-applies" class="settings-note"></div>
   <div id="settings-status" class="settings-status" aria-live="polite"></div>
   <div id="settings-harness" class="settings-harness"></div>
   <div id="settings-common"></div>
@@ -294,6 +310,7 @@ body:has(#mea.on) #side{z-index:6}
   <label class="tool"><input type="checkbox" id="trkon"><svg class="i" viewBox="0 0 16 16"><path d="M2 13V3M2 13h12M4 10l3-3 2 2 4-5"/></svg>Size</label>
   <label class="tool" title="Measures: numbers by scope, context, family and inclusion, with where each one came from"><input type="checkbox" id="meaon"><svg class="i" viewBox="0 0 16 16"><path d="M3 14V8M7 14V3M11 14V6M15 14V10"/></svg>Measures</label>
   <label class="tool"><input type="checkbox" id="follow"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>Follow the agent</label>
+  <button class="tool" id="rec" title="Record the graph from inception: the map is cleared and built again while the canvas is captured to a video file. Press again to stop."><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4" fill="currentColor"/><circle cx="8" cy="8" r="6"/></svg>Record</button>
   <div id="lay"></div>
   <div id="agent"></div>
   <div id="find"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><input id="q" placeholder="Find in memory"></div>
@@ -376,8 +393,29 @@ function showHarness(r) {
 }
 // -- settings: the common dials and the active harness's own controls share one CRUD widget, but never one storage layer.
 let settingsRequest = 0;
+let settingsLayer = "";  // the id of the config file the widget shows (view.config_layers); "" is this memory's own
+// The config files that the harness names (a profile's, each scope's), grouped by profile, with the chats that read each.
+function renderLayers(answer) {
+  const select = $("settings-layer"), layers = answer.layers || [];
+  settingsLayer = answer.layer || "";
+  select.replaceChildren();
+  const groups = new Map();
+  layers.forEach(l => { const g = l.profile || ""; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(l); });
+  groups.forEach((items, name) => {
+    const parent = name ? document.createElement("optgroup") : select;
+    if (name) { parent.label = "profile " + name; select.append(parent); }
+    items.forEach(l => {
+      const o = document.createElement("option"); o.value = l.id;
+      o.textContent = (l.kind === "scope" ? "\u2003scope " + l.label.split(" / ").slice(1).join(" / ") : l.label) + (l.here ? "  (this view)" : "") + (l.exists ? "" : "  (no file yet)");
+      parent.append(o);
+    });
+  });
+  select.value = settingsLayer;
+  const l = layers.find(x => x.id === settingsLayer);
+  $("settings-applies").textContent = l ? "Applies to " + l.applies + ". File: " + l.path : "";
+}
 function apiWrite(action, target, key, value) {
-  const body = {action, target, harness: HARNESS.key || ""};
+  const body = {action, target, harness: HARNESS.key || "", layer: settingsLayer};
   if (key) body.key = key;
   if (value !== undefined) body.value = value;
   return fetch("api/settings?" + new URLSearchParams({k: KEY, h: HARNESS.key || ""}), {
@@ -453,7 +491,8 @@ function renderSettings(answer) {
   const common = answer.common || {}, model = common.model || "";
   const commonBox = $("settings-common"); commonBox.replaceChildren();
   const title = document.createElement("div"); title.className = "settings-note";
-  title.textContent = "Common dials · " + (common.path || "breadcrumbs/config.json") + (model ? " · model " + model : " · profile-wide"); commonBox.append(title);
+  title.textContent = "Common dials · " + (common.path || "breadcrumbs/config.json") + (model ? " · model " + model : " · profile-wide") + ((common.chain || []).length > 1 ? " · read after " + common.chain[0].path : "") + " · the environment of a running chat (BREADCRUMBS_*) wins over every file"; commonBox.append(title);
+  renderLayers(answer);
   (common.groups || []).forEach(group => commonBox.append(settingsGroup(group.name, group.rows || [], "common", model)));
 
   const harnessBox = $("settings-harness"); harnessBox.replaceChildren();
@@ -473,7 +512,7 @@ async function loadSettings() {
   const request = ++settingsRequest;
   setSettingsStatus("Loading settings…");
   try {
-    const r = await api("settings", {harness: HARNESS.key || "", model: $("settings-model").value.trim()});
+    const r = await api("settings", {harness: HARNESS.key || "", model: $("settings-model").value.trim(), layer: settingsLayer});
     if (request !== settingsRequest) return;
     renderSettings(r); setSettingsStatus("Settings loaded.");
   } catch (e) { if (request === settingsRequest) setSettingsStatus(e.message, true); }
@@ -487,13 +526,14 @@ $("brandmark").addEventListener("click", toggleSettings);
 $("settings-close").addEventListener("click", () => { $("settings-panel").hidden = true; });
 $("settings-reload").addEventListener("click", loadSettings);
 $("settings-model").addEventListener("change", loadSettings);
+$("settings-layer").addEventListener("change", () => { settingsLayer = $("settings-layer").value; loadSettings(); });
 $("settings-reset").addEventListener("click", async () => {
   try { await apiWrite("reset", "common", null, undefined); await loadSettings(); }
   catch (e) { setSettingsStatus(e.message, true); }
 });
 $("settings-reset-all").addEventListener("click", async () => {
   try {
-    const body = {action: "reset", target: "common", all_models: true, harness: HARNESS.key || ""};
+    const body = {action: "reset", target: "common", all_models: true, harness: HARNESS.key || "", layer: settingsLayer};
     await fetch("api/settings?" + new URLSearchParams({k: KEY, h: HARNESS.key || ""}), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).then(r => r.ok ? r.json() : Promise.reject(new Error("settings reset failed: HTTP " + r.status)));
     await loadSettings();
   } catch (e) { setSettingsStatus(e.message, true); }
@@ -2116,9 +2156,9 @@ function context() {
 }
 // -- The size of the context. ACE writes one line per request to ace.log: the request before it (raw), the request
 // it sent, the model's own count of the one before, and what it did (pass, keep, fold, ratchet). A fold is a
-// point where the sent size drops. Four views of the same lines: a line, candles, a pie of the last request, and
-// the totals of every session. Colors follow the entity in every chart: sent blue, without ACE gray, the model's
-// count aqua, a fold orange.
+// point where the sent size drops. Four views of the same lines: the chart of the context and the cache (with the
+// requests and the cache leases of usage.log), candles, a pie of the last request, and the totals of every session.
+// Colors follow the entity in every chart: sent blue, without ACE gray, the model's count aqua, a fold orange.
 const TK = {sent: "#3987e5", raw: "#8a8a94", seen: "#199e70", fold: "#d95926", fixed: "#8a8a94", layer: "#9085e9", exact: "#d55181"};
 let trkMode = "selected", trkPin = "", trkKey = "", trkLast = null;  // trkLast: [data, note, width] of the last drawing
 const NS = "http://www.w3.org/2000/svg";
@@ -2165,52 +2205,418 @@ function trkGrid() {  // the columns of the charts (fewer in a narrow window) an
   const inner = $("trk").clientWidth - 28, cols = inner >= 960 ? 3 : inner >= 640 ? 2 : 1, col = (inner - (cols - 1) * 10) / cols;
   return {cols, w: n => Math.max(200, Math.floor(Math.min(n, cols) * col + (Math.min(n, cols) - 1) * 10 - 26))};
 }
-// the line: sent, without ACE, the model's count, the target, and a mark on each fold
-function lineChart(d) {
-  const pts = d.points, box = panel("w2", "Context size by request", "Tokens in each request. A fold is where the sent size drops.");
-  const W = trkGrid().w(2), H = 236, m = {l: 44, r: 62, t: 12, b: 24};
-  if (!pts.length) { box.append(el("div", "empty", "No requests logged for this session.")); return box; }
-  const goal = Math.max(...pts.map(p => p.target || 0)), {top: ymax, ticks} = nice(Math.max(goal, ...pts.map(p => p.sent)) * 1.06);
-  const px = i => m.l + (pts.length < 2 ? 0 : i / (pts.length - 1)) * (W - m.l - m.r), y = v => H - m.b - Math.min(v, ymax) / ymax * (H - m.t - m.b);
-  const s = sv("svg", {viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
-    "aria-label": `Context size over ${pts.length} requests, ${pts.filter(p => p.act === "fold").length} folds`});
-  s.append(axes(W, H, m, ymax, ticks, y));
-  for (const i of new Set([0, Math.floor((pts.length - 1) / 2), pts.length - 1]))
-    s.append(sv("text", {x: px(i), y: H - 6, "text-anchor": i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}, hms(pts[i].ts)));
-  const path = (f, v) => pts.map((p, i) => f(p) == null ? null : (i && pts[i - 1] && f(pts[i - 1]) != null ? "L" : "M") + px(i).toFixed(1) + " " + y(v(p)).toFixed(1)).filter(Boolean).join(" ");
-  let tp = "";  // the target is a step line: a ratchet raises it
-  pts.forEach((p, i) => { if (p.target) tp += (tp ? "H" + px(i).toFixed(1) + "V" + y(p.target).toFixed(1) : "M" + px(i).toFixed(1) + " " + y(p.target).toFixed(1)); });
-  if (tp) s.append(sv("path", {d: tp + `H${px(pts.length - 1).toFixed(1)}`, fill: "none", stroke: "var(--faint)", "stroke-width": 1.5}));
-  s.append(sv("path", {d: path(p => p.raw, p => p.raw), fill: "none", stroke: TK.raw, "stroke-width": 1.5, opacity: .75}));
-  s.append(sv("path", {d: path(p => p.seen, p => p.seen), fill: "none", stroke: TK.seen, "stroke-width": 1.5}));
-  s.append(sv("path", {d: path(p => p.sent, p => p.sent), fill: "none", stroke: TK.sent, "stroke-width": 2, "stroke-linejoin": "round"}));
-  for (const p of pts) if (p.act === "fold" || p.act === "ratchet") {
-    s.append(sv("circle", {cx: px(p.i), cy: y(p.sent), r: 6.5, fill: "var(--card)"}));
-    s.append(sv("circle", {cx: px(p.i), cy: y(p.sent), r: 4.5, fill: p.act === "fold" ? TK.fold : "var(--card)", stroke: TK.fold, "stroke-width": 2}));
+// -- The context and the cache of a chat on one chart. It is a canvas, so it zooms and pans: a pinch (or Ctrl or Cmd with
+// the wheel), a drag and the buttons act on the requests, and the same on the left axis act on the tokens.
+// The window across has the weight of the map's camera (spring and the MOVE table above): a sideways wheel moves a goal and
+// the window follows it, and a drag that is thrown glides on at the speed of the hand until the spring stops it. A new
+// input stops a glide where it is. #motion=0 (or prefers-reduced-motion) moves the window straight.
+// What the provider counted (usage.log) is drawn as columns: a request is a column of what it read from the cache (its hit,
+// from 0 up to cr) and, on top, what it wrote to it (cr up to cr + cw). Behind the columns are the leases (View.leases_of):
+// a lease is the rectangle of the tokens that one write put in the cache, from its request to ttl after its last read, and
+// it is paler from that last read on, while it runs out. So a hit is as tall as the leases that it read. What ACE counted
+// (ace.log) is drawn as lines over them: sent, the model's count, without ACE, the target, and a mark on each fold.
+// Crowded marks get smaller: a fold is a dot, then a small dot, then a tick on the top edge. The focus scale gives most of
+// the height to the band where the requests end and squeezes the rest (grey, with a break on the axis).
+const CC = {hit: "#3fb8c4", write: "#e3b341", lease: TK.layer, side: "#e06bb0", step: "#e5484d"};
+const CZ = {sid: "", xmode: "cut", ymode: "focus", x: null, y: null, off: new Set(["seen", "raw"]),  // kept while new data is drawn
+  gx: null, vx: 0, om: MOVE.focus, gt: 0,  // a glide across: where the left edge of the window goes (null: at rest), its speed (axis units a second), the spring, the time of its last frame
+  held: null, heldAt: 0};  // the canvas that a hand holds (a drag or a pinch) and when the hand last moved: trk() draws no new chart under it
+const czHalt = () => { CZ.gx = null; CZ.vx = 0; };  // a new input: the glide stops here
+// The speed that a release gives to the window, in axis units a second (0: no glide), as fling() gives it to the map's camera.
+// pts: [[x in pixels, ms], ...] of the pointer, oldest first; now: the ms of the release; span: the units that the window
+// shows; pw: its width in pixels.
+function czThrow(pts, now, span, pw) {
+  const p = pts.filter(s => s[1] >= now - MOVE.hand);
+  if (p.length < 2) return 0;
+  const a = p[0], b = p[p.length - 1], dt = (b[1] - a[1]) / 1000;
+  if (dt < 0.008 || now - b[1] > MOVE.hand / 2) return 0;  // too few samples, or the hand had stopped before it let go
+  const vx = (b[0] - a[0]) / dt;  // px/s on the screen
+  if (Math.abs(vx) < MOVE.flick) return 0;
+  return -clamp(vx, -MOVE.fast, MOVE.fast) / pw * span;  // the window moves against the hand
+}
+// One frame of a glide: [the left edge, its speed, true when it is there]. There: a quarter of a pixel from the goal and
+// slower than 8 pixels a second (px1: the axis units of one pixel). The left edge stays in 0..top: spring() does not pass
+// a goal that the window runs to, and an end of the session stops a window that still runs away from its goal.
+function czGlide(a, v, goal, om, dt, px1, top) {
+  [a, v] = spring(a, v, goal, om, dt);
+  if (a < 0 || a > top) a = clamp(a, 0, top);  // a frame can pass an end while the spring already pulls back
+  if (a <= 0 && v < 0 || a >= top && v > 0) v = 0;
+  return Math.abs(a - goal) < px1 * 0.25 && Math.abs(v) < px1 * 8 ? [goal, 0, true] : [a, v, false];
+}
+const czDur = s => s < 90 ? Math.round(s) + " s" : s < 5400 ? Math.round(s / 60) + " min" : (s / 3600).toFixed(1) + " h";
+const czUsd = x => "$" + (x >= 1 ? x.toFixed(2) : x >= 0.01 ? x.toFixed(3) : x.toFixed(4));
+// a tokens axis in parts: K is [[tokens, share of the height]], rising. czY gives the share of a value, czV the value of a share
+const czY = (K, v) => { let i = 1; while (i < K.length - 1 && v > K[i][0]) i++; return K[i - 1][1] + (v - K[i - 1][0]) / (K[i][0] - K[i - 1][0]) * (K[i][1] - K[i - 1][1]); };
+const czV = (K, f) => { let i = 1; while (i < K.length - 1 && f > K[i][1]) i++; return K[i - 1][0] + (f - K[i - 1][1]) / (K[i][1] - K[i - 1][1]) * (K[i][0] - K[i - 1][0]); };
+function czTicks(K, ph) {  // the numbers of that axis: the start of each part, and about one every 26 px inside it
+  const out = [];
+  for (let i = 1; i < K.length; i++) {
+    const v0 = K[i - 1][0], v1 = K[i][0], n = Math.floor((K[i][1] - K[i - 1][1]) * ph / 26);
+    out.push(v0);
+    if (n < 1) continue;
+    const raw = (v1 - v0) / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p, step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+    for (let v = Math.ceil(v0 / step + 1e-9) * step; v < v1 - step * 1e-6; v += step) out.push(v);
   }
-  const last = pts[pts.length - 1], over = last.raw > ymax;
-  s.append(sv("text", {x: px(pts.length - 1) + 8, y: y(last.sent) + 4, class: "v"}, kfmt(last.sent)));
-  const ry = Math.abs(y(last.raw) - y(last.sent)) < 13 ? y(last.raw) - 12 : y(last.raw);
-  s.append(sv("text", {x: px(pts.length - 1) + 8, y: ry + 4}, kfmt(last.raw) + (over ? " ↑" : "")));
-  if (last.target) s.append(sv("text", {x: W - m.r + 8, y: y(last.target) - 6}, "target " + kfmt(last.target)));
-  const cross = sv("line", {y1: m.t, y2: H - m.b, stroke: "var(--dim)", "stroke-width": 1, opacity: 0}), dot = sv("circle", {r: 4.5, fill: TK.sent, stroke: "var(--card)", "stroke-width": 2, opacity: 0});
-  const hit = sv("rect", {x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent"});
-  s.append(cross, dot, hit); box.append(s);
-  const t = tip(box);
-  hit.addEventListener("mousemove", e => {
-    const r = s.getBoundingClientRect(), mx = (e.clientX - r.left) * W / r.width, i = Math.max(0, Math.min(pts.length - 1, Math.round((mx - m.l) / (W - m.l - m.r) * (pts.length - 1)))), p = pts[i];
-    cross.setAttribute("x1", px(i)); cross.setAttribute("x2", px(i)); cross.setAttribute("opacity", .6);
-    dot.setAttribute("cx", px(i)); dot.setAttribute("cy", y(p.sent)); dot.setAttribute("opacity", 1);
-    const bx = box.getBoundingClientRect();
-    t.show([`request ${p.i + 1} · ${hms(p.ts)} · ${p.act}`, `sent ${p.sent.toLocaleString()}` + (p.target ? ` (${pc(p.sent / p.target)} of the target)` : ""),
-      `without ACE ${p.raw.toLocaleString()}`, p.seen ? `the model counted ${p.seen.toLocaleString()}` : "the model's count: not yet",
-      p.act === "fold" || p.act === "ratchet" ? (p.drop ? `cut ${pc(p.drop)} of the request before` : "no cut: the request had not grown") + ` · ${p.crumbs} crumbs` : `${p.crumbs} crumbs in the layer`],
-      e.clientX - bx.left, e.clientY - bx.top);
+  out.push(K[K.length - 1][0]);
+  return out;
+}
+function czModel(d) {  // what the chart needs of one answer of api/ace: the two axes, and the leases and requests on them
+  const pts = d.points, L = d.leases || {}, ttl = L.ttl || 300, marks = L.marks || [];
+  // a server older than this page gives a lease as one size and gives no requests: it is drawn from 0, and the panel says so
+  const items = (L.items || []).map(ls => ls.hi != null ? ls : {lo: 0, hi: ls.prefix || 0, start: ls.start, last: Math.max(ls.start, ls.end - ttl), end: ls.end, reads: ls.reads || 0, side: ""});
+  const beats = marks.length ? marks.map(m => m.at) : pts.map(p => p.ts), n = beats.length, big = a => a.reduce((x, y) => Math.max(x, y), 0);
+  const t0 = Math.min(pts[0].ts, beats[0]), tEnd = marks.reduce((x, m) => Math.max(x, m.ts), pts[pts.length - 1].ts), t1 = items.reduce((x, ls) => Math.max(x, ls.end), tEnd);
+  const cuts = [];  // the idle stretches: no request ran and every lease had run out
+  for (let i = 0, busy = t0; i < n; i++) { if (beats[i] - busy > ttl + 120) cuts.push([busy + ttl + 45, beats[i] - 20, beats[i] - busy]); busy = Math.max(busy, marks.length ? marks[i].ts : beats[i]); }
+  const brk = Math.max(8, Math.min(120, (t1 - t0 - cuts.reduce((x, c) => x + c[1] - c[0], 0)) * 0.012));  // a cut stretch is this wide, in seconds of the axis
+  const U = {  // a time on each axis: seconds, seconds with the idle stretches cut, and the number of the request (with a fraction)
+    time: t => t - t0,
+    cut: t => { let u = t - t0; for (const [c0, c1] of cuts) { if (t <= c0) break; u -= (Math.min(t, c1) - c0) * (1 - brk / (c1 - c0)); } return u; },
+    request: t => {
+      if (t <= beats[0]) return 0;
+      if (t >= beats[n - 1]) return n - 1 + Math.min(1, (t - beats[n - 1]) / ttl);
+      let lo = 0, hi = n - 1;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (beats[mid] <= t) lo = mid; else hi = mid; }
+      return lo + (beats[hi] > beats[lo] ? (t - beats[lo]) / (beats[hi] - beats[lo]) : 0);
+    }};
+  const T = (mode, u) => { let lo = t0, hi = t1; for (let i = 0; i < 44; i++) { const mid = (lo + hi) / 2; if (U[mode](mid) < u) lo = mid; else hi = mid; } return (lo + hi) / 2; };  // the time at a place on an axis
+  const step = (L.steps || []).length ? L.steps[0] : null;  // [the size of a request where the price steps up, the times for a cache write]
+  const peak = Math.max(big(pts.map(p => Math.max(p.sent, p.target || 0))), big(marks.map(m => m.cr + m.cw + m.inp)), big(items.map(ls => ls.hi)));
+  const near = step && peak > step[0] * 0.6 ? step[0] : 0, grain = v => 10 ** Math.floor(Math.log10(Math.max(10, v))) / 10;
+  const up = v => Math.ceil(v / grain(v) - 1e-9) * grain(v), down = v => Math.floor(v / grain(v) + 1e-9) * grain(v);
+  const ymax = Math.max(10, up(Math.max(peak, near) * 1.03)), ytop = Math.max(ymax, up(big(pts.map(p => p.raw)) * 1.03));
+  // the focus scale: the band is where the chat's own requests end (3 in 100 are under it), up to the target and the price step
+  const ends = (marks.length ? marks.filter(m => !m.side).map(m => m.cr + m.cw + m.inp) : pts.map(p => p.sent)).sort((x, y) => x - y);
+  const q = f => ends.length ? ends[Math.min(ends.length - 1, Math.floor(f * ends.length))] : 0;
+  const low = marks.filter(m => m.kind === "part" && !m.side).map(m => m.cr).sort((x, y) => x - y), base = low.length ? low[low.length >> 1] : 0;  // what a request reads after a fold
+  const b0 = down(q(0.03) * 0.97), cap = up(Math.max(q(0.97), big(pts.map(p => p.target || 0)), near) * 1.03), c1 = up(base * 1.2);
+  let focus = [[0, 0], [ymax, 1]];
+  if (b0 >= ymax * 0.3) {
+    focus = base && c1 < b0 * 0.6 ? [[0, 0], [c1, 0.13], [b0, 0.19]] : [[0, 0], [b0, 0.12]];
+    if (cap <= ymax * 0.9) focus.push([cap, 0.84]);
+    focus.push([ymax, 1]);
+  }
+  const aceOf = new Map(), own = marks.map((m, i) => [m, i]).filter(e => !e[0].side);  // the line of ace.log of each request of the chat
+  let j = 0;
+  for (const p of pts) {
+    while (j < own.length - 1 && Math.abs(own[j + 1][0].at - p.ts) <= Math.abs(own[j][0].at - p.ts)) j++;
+    if (own.length && Math.abs(own[j][0].at - p.ts) <= 3) aceOf.set(own[j][1], p);
+  }
+  return {pts, L, ttl, marks, items, beats, t0, t1, tEnd, cuts, U, T, step, ymax, ytop, focus, aceOf, now: L.now || Date.now() / 1000,
+    old: L.marks === undefined && items.length > 0};
+}
+function sizeChart(d) {
+  const pts = d.points, box = panel("w3", "Context and cache", "Each request is a column: the part of its context that it read from the cache (its hit) and, on top, the part that it wrote to it. Behind the columns are the leases: what the cache kept, and until when.");
+  if (!pts.length) { box.append(el("div", "empty", "No requests logged for this session.")); return box; }
+  if (CZ.sid !== d.session) { CZ.sid = d.session; CZ.x = CZ.y = null; czHalt(); }
+  const M = czModel(d), {marks, items} = M, bar = el("div", "czb"), segX = el("div", "seg"), segZ = el("div", "seg"), segY = el("div", "seg");
+  const Wd = trkGrid().w(3), Ht = 330, R = {l: 48, r: Wd - 62, t: 16, b: Ht - 26}, pw = R.r - R.l, ph = R.b - R.t;
+  const cvs = el("canvas", "cz"), g2 = cvs.getContext("2d"), dpr = devicePixelRatio || 1, t = tip(box);
+  cvs.style.width = Wd + "px"; cvs.style.height = Ht + "px"; cvs.width = Math.round(Wd * dpr); cvs.height = Math.round(Ht * dpr);
+  cvs.setAttribute("role", "img");
+  cvs.setAttribute("aria-label", `Context and cache over ${marks.length || pts.length} requests, ${pts.filter(p => p.act === "fold").length} folds, ${items.length} cache leases`);
+  let hot = null, raf = 0, ptr = null, gliding = 0;  // ptr: where the pointer is while no button is down; gliding: the frame that a glide waits for
+  const view = () => {  // the window on both axes, and where a time and a number of tokens are in the canvas
+    const U = M.U[CZ.xmode], umax = Math.max(1e-6, U(M.t1)), [ua, ub] = CZ.x || [0, umax];
+    const K = CZ.y ? [[CZ.y[0], 0], [CZ.y[1], 1]] : CZ.ymode === "linear" ? [[0, 0], [M.ymax, 1]] : M.focus;
+    const ta = M.T(CZ.xmode, ua), tb = M.T(CZ.xmode, ub);
+    return {U, umax, ua, ub, K, ta, tb, sp: pw / Math.max(1, M.U.request(tb) - M.U.request(ta)),  // sp: the pixels that a request has
+      X: tt => R.l + (U(tt) - ua) / (ub - ua) * pw, Y: v => R.b - czY(K, v) * ph};
+  };
+  const paint = () => {
+    raf = 0;
+    const V = view(), {X, Y, K} = V, show = k => !CZ.off.has(k), req = CZ.xmode === "request", sideOn = show("side");
+    const cs = {fg: css("fg"), dim: css("dim"), line: css("line"), faint: css("faint"), card: css("card")};
+    const hline = (y, x0, x1) => { g2.beginPath(); g2.moveTo(x0, Math.round(y) + .5); g2.lineTo(x1, Math.round(y) + .5); g2.stroke(); };
+    g2.setTransform(dpr, 0, 0, dpr, 0, 0); g2.clearRect(0, 0, Wd, Ht); g2.font = "11px " + SANS; g2.setLineDash([]); g2.lineWidth = 1;
+    // the tokens: a squeezed part of the axis is grey with a break mark; then the lines and their numbers
+    const slope = i => (K[i][1] - K[i - 1][1]) / (K[i][0] - K[i - 1][0]), steep = K.reduce((x, k, i) => i ? Math.max(x, slope(i)) : 0, 0);
+    for (let i = 1; i < K.length; i++) if (slope(i) < steep / 4) {
+      const y1 = Y(K[i][0]), y0 = Y(K[i - 1][0]), ym = (y0 + y1) / 2;
+      g2.fillStyle = "rgba(255,255,255,.04)"; g2.fillRect(R.l, y1, pw, y0 - y1);
+      g2.strokeStyle = cs.dim; for (const dy of [-2, 2]) { g2.beginPath(); g2.moveTo(R.l - 5, ym + dy + 2); g2.lineTo(R.l + 5, ym + dy - 2); g2.stroke(); }
+    }
+    g2.textAlign = "right"; g2.textBaseline = "middle";
+    let edge = 1e9;
+    for (const v of czTicks(K, ph)) {
+      const y = Y(v);
+      if (y < R.t - 1 || y > R.b + 1 || edge - y < 13) continue;
+      edge = y; g2.strokeStyle = cs.line; hline(y, R.l, R.r); g2.fillStyle = cs.dim; g2.fillText(kfmt(v), R.l - 8, y);
+    }
+    // the requests or the clock: the numbers under the plot
+    g2.textAlign = "center"; g2.textBaseline = "alphabetic"; edge = -1e9;
+    const xtick = (x, label) => {
+      if (x < R.l - 1 || x > R.r + 1 || x - edge < 66) return;
+      edge = x; g2.strokeStyle = cs.faint; g2.beginPath(); g2.moveTo(Math.round(x) + .5, R.b); g2.lineTo(Math.round(x) + .5, R.b + 4); g2.stroke();
+      g2.fillStyle = cs.dim; g2.fillText(label, clamp(x, R.l + 20, R.r - 20), Ht - 8);
+    };
+    if (req) {
+      const k0 = Math.ceil(M.U.request(V.ta) - 1e-9), k1 = Math.floor(M.U.request(V.tb) + 1e-9), raw = Math.max(1, (k1 - k0) / Math.max(1, pw / 100));
+      const p = 10 ** Math.floor(Math.log10(raw)), f = raw / p, st = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p);
+      for (let k = Math.ceil(k0 / st) * st; k <= k1 && k < M.beats.length; k += st) xtick(X(M.beats[k]), `${k + 1} · ${hms(M.beats[k]).slice(0, 5)}`);
+    } else {
+      const want = (V.ub - V.ua) / pw * 78, st = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400].find(s => s >= want) || 86400;
+      const tz = new Date(V.ta * 1000).getTimezoneOffset() * 60;  // the ticks are on whole minutes and hours of the local clock
+      for (let tt = Math.ceil((V.ta - tz) / st) * st + tz; tt <= V.tb; tt += st)
+        if (CZ.xmode !== "cut" || !M.cuts.some(c => tt > c[0] && tt < c[1])) xtick(X(tt), st < 60 ? hms(tt) : hms(tt).slice(0, 5));
+    }
+    g2.save(); g2.beginPath(); g2.rect(R.l, R.t, pw, ph); g2.clip();
+    if (CZ.xmode === "cut") for (const [c0, c1, idle] of M.cuts) {  // an idle stretch cut short: a grey band that says how long the chat was idle
+      const x0 = X(c0), x1 = X(c1);
+      if (x1 < R.l || x0 > R.r) continue;
+      g2.fillStyle = "rgba(255,255,255,.04)"; g2.fillRect(x0, R.t, x1 - x0, ph);
+      if (x1 - x0 >= 10) { g2.save(); g2.translate((x0 + x1) / 2, R.t + 6); g2.rotate(-Math.PI / 2); g2.textAlign = "right"; g2.textBaseline = "middle"; g2.fillStyle = cs.dim; g2.fillText(czDur(idle) + " idle", 0, 0); g2.restore(); }
+    }
+    if (M.step) { g2.fillStyle = rgba(CC.step, .07); g2.fillRect(R.l, R.t, pw, clamp(Y(M.step[0]), R.t, R.b) - R.t); }  // over the price step
+    if (show("lease")) for (const ls of items) {  // a lease: strong while requests read it, pale from its last read to its end
+      if (ls.side && !sideOn) continue;
+      const x0 = X(ls.start), x2 = X(ls.end);
+      if (x2 < R.l || x0 > R.r) continue;
+      const x1 = clamp(X(ls.last), x0, x2), yt = Y(ls.hi), h = Y(ls.lo) - yt, c = ls.side ? CC.side : CC.lease;
+      if (x1 > x0) { g2.fillStyle = rgba(c, .26); g2.fillRect(x0, yt, x1 - x0, h); }
+      if (x2 > x1) { g2.fillStyle = rgba(c, .11); g2.fillRect(x1, yt, x2 - x1, h); }
+      if (h >= 2 && x2 - x0 >= 3) {
+        g2.fillStyle = rgba(c, .6); g2.fillRect(x0, yt, Math.max(1, x1 - x0), 1);
+        if (x2 - x1 >= 4) { g2.fillStyle = rgba(c, .34); g2.fillRect(x1, yt, x2 - x1, 1); g2.fillRect(x2 - 1, yt, 1, h); }
+      }
+    }
+    if (marks.length && (show("hit") || show("write"))) for (const m of marks) {  // a request: its hit, and its write on top
+      if (m.side && !sideOn) continue;
+      const x0 = X(m.at), w = Math.max(1, req ? V.sp * (V.sp >= 4 ? .8 : 1) : X(m.ts) - x0);
+      if (x0 + w < R.l || x0 > R.r) continue;
+      const y0 = Y(0), y1 = Y(m.cr), y2 = Y(m.cr + m.cw);
+      if (show("hit") && m.cr) { g2.fillStyle = rgba(CC.hit, .8); g2.fillRect(x0, y1, w, y0 - y1); }
+      if (show("write") && m.cw) { g2.fillStyle = rgba(CC.write, .92); g2.fillRect(x0, Math.min(y2, y1 - 1), w, Math.max(1, y1 - y2)); }
+      if (m.side) {  // not the chat: a cap, and a frame when there is room
+        g2.fillStyle = CC.side; g2.fillRect(x0 - (w < 3 ? 1 : 0), y2 - 4, Math.max(3, w), 2);
+        if (w >= 6) { g2.strokeStyle = CC.side; g2.strokeRect(x0 + .5, y2 + .5, w - 1, y0 - y2 - 1); }
+      }
+    }
+    if (show("target")) {  // a step line: a ratchet raises it
+      g2.strokeStyle = cs.faint; g2.lineWidth = 1.5; g2.beginPath();
+      let py = null;
+      for (const p of pts) if (p.target) { const x = X(p.ts), y = Y(p.target); if (py === null) g2.moveTo(x, y); else { g2.lineTo(x, py); g2.lineTo(x, y); } py = y; }
+      if (py !== null) { g2.lineTo(X(pts[pts.length - 1].ts), py); g2.stroke(); }
+    }
+    const ln = (key, f, c, w, a) => {  // a line of ace.log; on a clock it stops where the chat was idle
+      if (!show(key)) return;
+      g2.strokeStyle = rgba(c, a); g2.lineWidth = w; g2.lineJoin = "round"; g2.beginPath();
+      let prev = null;
+      for (const p of pts) {
+        const v = f(p);
+        if (v == null) { prev = null; continue; }
+        if (prev !== null && (req || p.ts - prev <= M.ttl)) g2.lineTo(X(p.ts), Y(v)); else g2.moveTo(X(p.ts), Y(v));
+        prev = p.ts;
+      }
+      g2.stroke();
+    };
+    ln("raw", p => p.raw, TK.raw, 1.5, .75); ln("seen", p => p.seen, TK.seen, 1.5, 1); ln("sent", p => p.sent, TK.sent, 2, 1);
+    g2.lineWidth = 1;
+    if (M.step) {
+      const y = Y(M.step[0]);
+      if (y >= R.t && y <= R.b) {
+        g2.strokeStyle = rgba(CC.step, .8); g2.setLineDash([5, 4]); hline(y, R.l, R.r); g2.setLineDash([]);
+        g2.fillStyle = CC.step; g2.textAlign = "left"; g2.textBaseline = "alphabetic"; g2.fillText(`a request over ${kfmt(M.step[0])}: cache write ×${M.step[1]}`, R.l + 7, y - 5);
+      }
+    }
+    if (show("fold")) for (const p of pts) if (p.act === "fold" || p.act === "ratchet") {
+      const x = X(p.ts);
+      if (x < R.l - 6 || x > R.r + 6) continue;
+      if (V.sp < 3.5) { g2.fillStyle = TK.fold; g2.fillRect(Math.round(x), R.t, 1, 5); continue; }  // crowded: a tick on the top edge
+      const y = Y(p.sent), r = V.sp < 10 ? 2.4 : 4.2;
+      g2.beginPath(); g2.arc(x, y, r + 1.6, 0, 6.2832); g2.fillStyle = cs.card; g2.fill();
+      g2.beginPath(); g2.arc(x, y, r, 0, 6.2832);
+      if (p.act === "fold") { g2.fillStyle = TK.fold; g2.fill(); } else { g2.strokeStyle = TK.fold; g2.lineWidth = 2; g2.stroke(); g2.lineWidth = 1; }
+    }
+    if (M.now - M.tEnd < M.ttl + 90 && M.now <= V.tb) {  // a chat that still runs: now, and the leases that are still kept
+      const x = Math.round(X(M.now)) + .5;
+      g2.strokeStyle = cs.dim; g2.setLineDash([2, 3]); g2.beginPath(); g2.moveTo(x, R.t); g2.lineTo(x, R.b); g2.stroke(); g2.setLineDash([]);
+      g2.fillStyle = cs.dim; g2.textAlign = "right"; g2.textBaseline = "alphabetic"; g2.fillText("now", x - 4, R.t + 11);
+    }
+    if (hot) { g2.strokeStyle = rgba(cs.fg, .55); g2.beginPath(); g2.moveTo(Math.round(hot.x) + .5, R.t); g2.lineTo(Math.round(hot.x) + .5, R.b); g2.stroke(); }
+    g2.restore();
+    g2.strokeStyle = cs.faint; hline(R.b, R.l, R.r);
+    const last = pts[pts.length - 1], tags = [];  // the numbers at the right end, kept apart
+    if (show("sent") && V.tb >= last.ts - 1) tags.push([Y(last.sent), kfmt(last.sent), cs.fg]);
+    if (show("target") && last.target) tags.push([Y(last.target), "target " + kfmt(last.target), cs.dim]);
+    tags.sort((x, y) => x[0] - y[0]);
+    for (let i = 1; i < tags.length; i++) tags[i][0] = Math.max(tags[i][0], tags[i - 1][0] + 13);
+    g2.textAlign = "left"; g2.textBaseline = "middle";
+    for (const [y, s, c] of tags) if (y > R.t - 6 && y < R.b + 6) { g2.fillStyle = c; g2.fillText(s, R.r + 7, y); }
+    if (show("raw") && last.raw > czV(K, 1)) { g2.textAlign = "right"; g2.fillStyle = cs.dim; g2.fillText(`without ACE ${kfmt(last.raw)} ↑`, R.r - 6, R.t + 9); }
+  };
+  const redraw = () => { if (!raf) raf = requestAnimationFrame(paint); };
+  const zoomX = (k, px) => {  // zoom the requests about a pixel: what is under it stays under it
+    czHalt();
+    const V = view(), span = V.ub - V.ua, at = V.ua + (clamp(px, R.l, R.r) - R.l) / pw * span;
+    const ns = clamp(span / k, Math.min(V.umax, CZ.xmode === "request" ? 6 : 20), V.umax), a = clamp(at - (at - V.ua) * ns / span, 0, V.umax - ns);
+    CZ.x = ns >= V.umax * 0.999 ? null : [a, a + ns]; redraw();
+  };
+  const panX = dx => { const V = view(), span = V.ub - V.ua; if (!CZ.x) return; const a = clamp(V.ua - dx / pw * span, 0, V.umax - span); CZ.x = [a, a + span]; redraw(); };
+  const zoomY = (k, py) => {  // the same for the tokens; a zoom of the tokens is to scale
+    const K = view().K, f = clamp((R.b - py) / ph, 0, 1), v = czV(K, f), ns = clamp((czV(K, 1) - czV(K, 0)) / k, Math.min(2000, M.ytop), M.ytop), a = clamp(v - f * ns, 0, M.ytop - ns);
+    CZ.y = [a, a + ns]; bars(); redraw();
+  };
+  const panY = dy => { if (!CZ.y) return; const span = CZ.y[1] - CZ.y[0], a = clamp(CZ.y[0] + dy / ph * span, 0, M.ytop - span); CZ.y = [a, a + span]; redraw(); };
+  // The glide across: the left edge of the window goes to CZ.gx as the map's camera goes to its goal (spring: it starts at
+  // the speed given and never passes the goal, so an edge of the session stops it). The state is in CZ, so a chart that is
+  // built for new data while the window glides takes the glide over, and the loop of the canvas that left the page ends.
+  const glideTick = now => {
+    gliding = 0;
+    if (!cvs.isConnected || CZ.gx == null) return;
+    const V = view(), span = V.ub - V.ua, top = V.umax - span, dt = clamp((now - CZ.gt) / 1000, 0.001, 0.1);
+    CZ.gt = now;
+    if (!CZ.x || top <= 0) { czHalt(); return; }
+    CZ.gx = clamp(CZ.gx, 0, top);
+    const [a, v, there] = czGlide(V.ua, CZ.vx, CZ.gx, CZ.om, dt, span / pw, top);
+    CZ.x = [a, a + span];
+    if (there) czHalt(); else CZ.vx = v;
+    if (raf) cancelAnimationFrame(raf);
+    paint();
+    if (!there) gliding = requestAnimationFrame(glideTick);
+    else if (ptr && !drag) hover(ptr.p, ptr.e);  // at rest: the tooltip of what is under the pointer now
+  };
+  const glide = (goal, v, om) => {
+    CZ.gx = goal; CZ.vx = v; CZ.om = om;
+    if (hot) { hot = null; t.hide(); }
+    if (!gliding) { CZ.gt = performance.now(); gliding = requestAnimationFrame(glideTick); }
+  };
+  const slideX = dx => {  // a sideways wheel: it moves the goal and the window follows (MOVE.wheel)
+    if (!CZ.x) return;
+    if (!MOTION) return panX(-dx);
+    const V = view(), span = V.ub - V.ua, on = CZ.gx != null && CZ.om === MOVE.wheel;  // on: wheel steps are on their way
+    const goal = clamp((on ? CZ.gx : V.ua) + dx / pw * span, 0, V.umax - span);
+    if (on || goal !== V.ua) glide(goal, on ? CZ.vx : 0, MOVE.wheel); else czHalt();  // any other glide (a throw) stops where it is
+  };
+  const throwX = pts => {  // the hand lets go: the window keeps the speed of the hand, and the spring stops it
+    if (!MOTION || !CZ.x) return;
+    const V = view(), span = V.ub - V.ua, v = czThrow(pts, performance.now(), span, pw), goal = clamp(V.ua + v * MOVE.throw, 0, V.umax - span);
+    if (goal !== V.ua) glide(goal, v, MOVE.focus);  // thrown at an end of the session, the window stays
+  };
+  const bars = () => {
+    meaSeg(segX, [["request", "request", "Each request has the same width."], ["time", "time", "The clock, to scale: an idle stretch is as wide as it was long."],
+      ["cut", "time, idle cut", "The clock, with each idle stretch cut short once every lease had run out. A grey band says how long the stretch was."]], CZ.xmode, v => {
+      const V = view(), win = CZ.x && [M.T(CZ.xmode, V.ua), M.T(CZ.xmode, V.ub)].map(M.U[v]);  // the same stretch of time on the new axis
+      czHalt(); CZ.xmode = v; CZ.x = win && win[1] - win[0] >= (v === "request" ? 6 : 20) ? win : null; bars(); redraw();
+    });
+    meaSeg(segZ, [["out", "−", "Zoom out"], ["in", "+", "Zoom in"], ["fit", "fit", "The whole session (a double click on the chart does the same)"]], "", v => {
+      if (v === "fit") { czHalt(); CZ.x = CZ.y = null; bars(); redraw(); } else zoomX(v === "in" ? 1.6 : 1 / 1.6, (R.l + R.r) / 2);
+    });
+    meaSeg(segY, [["focus", "focus", "Most of the height goes to the band where the requests end. A grey part of the axis is squeezed."], ["linear", "linear", "The tokens from 0, to scale."]],
+      CZ.y ? "" : CZ.ymode, v => { CZ.ymode = v; CZ.y = null; bars(); redraw(); });
+  };
+  const pos = e => { const r = cvs.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; };
+  const hover = (p, e) => {  // the request nearest to the pointer, and the lease under it
+    if (p.x < R.l || p.x > R.r || p.y < R.t || p.y > R.b) { if (hot) { hot = null; t.hide(); redraw(); } return; }
+    const V = view(), req = CZ.xmode === "request", sideOn = !CZ.off.has("side"), lines = [];
+    let best = -1, bx = 0, bd = 1e9;
+    const mid = marks.length ? i => req ? V.X(marks[i].at) + V.sp * .4 : (V.X(marks[i].at) + V.X(marks[i].ts)) / 2 : i => V.X(pts[i].ts);
+    for (let i = 0, n = marks.length || pts.length; i < n; i++) {
+      if (marks.length && marks[i].side && !sideOn) continue;
+      const x = mid(i), dd = Math.abs(x - p.x);
+      if (dd < bd) { bd = dd; best = i; bx = x; }
+    }
+    if (best < 0) return;
+    const m = marks.length ? marks[best] : null, a = m ? M.aceOf.get(best) : pts[best];
+    if (m) {
+      lines.push(`request ${best + 1} of ${marks.length} · ${hms(m.at)} · ${(m.ts - m.at).toFixed(1)} s` + (m.side ? ` · second agent ${m.side}, not the chat` : ""),
+        `hit ${m.cr.toLocaleString()} · wrote ${m.cw.toLocaleString()} · new ${m.inp.toLocaleString()} · request ${(m.cr + m.cw + m.inp).toLocaleString()}`,
+        {hit: "It read all that the cache held.", part: "It read only the lower part of the cache: the context above that had changed.", miss: "It read nothing: the cache had run out, or this is the first request.", none: "No cache in this request."}[m.kind] || "");
+      if (m.store_usd != null) lines.push(`cache write ${czUsd(m.store_usd)} · cache read ${czUsd(m.read_usd)}` + (m.tier && M.step ? ` · over ${kfmt(M.step[0])}: the higher price` : ""));
+    }
+    if (a) lines.push((m ? "ACE: " : `request ${a.i + 1} · ${hms(a.ts)} · `) + `${a.act} · sent ${a.sent.toLocaleString()}` + (a.target ? ` (${pc(a.sent / a.target)} of the target)` : "") + ` · without ACE ${a.raw.toLocaleString()}`
+      + (a.act === "fold" || a.act === "ratchet" ? (a.drop ? ` · cut ${pc(a.drop)}` : "") : ""));
+    const tt = M.T(CZ.xmode, V.ua + (p.x - R.l) / pw * (V.ub - V.ua)), v = czV(V.K, (R.b - p.y) / ph);
+    let ls = null;
+    for (const x of items) if (x.start <= tt && tt <= x.end && x.lo <= v && v < x.hi && (sideOn || !x.side) && (!ls || x.start > ls.start)) ls = x;
+    if (ls && !CZ.off.has("lease")) lines.push(`lease ${ls.lo.toLocaleString()} to ${ls.hi.toLocaleString()}` + (ls.side ? ` of second agent ${ls.side}` : "") + `: ${ls.unseen ? "first read" : "written"} ${hms(ls.start)}, `
+      + (ls.reads ? `read by ${ls.reads} request${ls.reads > 1 ? "s" : ""}, last ${hms(ls.last)}` : "never read") + `, ${ls.end > M.now ? "kept until" : "ran out"} ${hms(ls.end)}`
+      + (ls.store_usd ? ` · ${czUsd(ls.store_usd)}` : "") + (ls.unseen ? " · the log has no write of it" : ""));
+    hot = {x: bx};
+    const b = box.getBoundingClientRect();
+    t.show(lines.filter(Boolean), e.clientX - b.left, e.clientY - b.top); redraw();
+  };
+  cvs.addEventListener("wheel", e => {
+    const p = pos(e), k = e.deltaMode === 1 ? 16 : 1;
+    let dx = e.deltaX * k, dy = e.deltaY * k;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (p.x < R.l) zoomY(Math.exp(-dy * 0.0022), p.y); else zoomX(Math.exp(-dy * 0.0022), p.x); return; }  // a pinch, or Ctrl or Cmd with the wheel
+    if (e.shiftKey && !dx) { dx = dy; dy = 0; }  // Shift with a wheel that only turns up and down, as in the matrix
+    if (Math.abs(dx) > Math.abs(dy) && CZ.x) { e.preventDefault(); slideX(dx); }  // a wheel up or down still scrolls the panel
+  }, {passive: false});
+  const fingers = new Map();
+  let drag = null;
+  cvs.addEventListener("pointerdown", e => {
+    const p = pos(e);
+    czHalt();  // the hand takes the window: a glide stops here
+    CZ.held = cvs; CZ.heldAt = performance.now();
+    fingers.set(e.pointerId, p); drag = {x: p.x, y: p.y, axis: p.x < R.l, moved: false, gap: 0, pts: [[p.x, performance.now()]]};
+    try { cvs.setPointerCapture(e.pointerId); } catch (err) { /* a pointer that is gone: the drag still works inside the canvas */ }
   });
-  hit.addEventListener("mouseleave", () => { t.hide(); cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); });
-  const keys = [["sent", TK.sent], ["without ACE", TK.raw], ["the model's count", TK.seen], ["target", "var(--faint)"], ["fold", TK.fold, "d"]];
-  if (pts.some(p => p.act === "ratchet")) keys.push(["target raised (ratchet)", TK.fold, "r"]);  // a ring, as on the line
-  box.append(keyRow(keys));
+  cvs.addEventListener("pointermove", e => {
+    const p = pos(e);
+    if (!drag || !fingers.has(e.pointerId)) {  // no button is down: the tooltip, once the window is at rest
+      ptr = {p, e: {clientX: e.clientX, clientY: e.clientY}};
+      if (CZ.gx == null) hover(p, e);
+      return;
+    }
+    fingers.set(e.pointerId, p); CZ.heldAt = performance.now();
+    if (fingers.size === 2) {  // two fingers: the gap between them zooms
+      const [f1, f2] = [...fingers.values()], gap = Math.hypot(f1.x - f2.x, f1.y - f2.y) || 1;
+      if (drag.gap) zoomX(gap / drag.gap, (f1.x + f2.x) / 2);
+      drag.gap = gap; drag.moved = true; drag.pts.length = 0;  // a pinch throws nothing
+      return;
+    }
+    if (!drag.moved && Math.abs(p.x - drag.x) + Math.abs(p.y - drag.y) > 4) { drag.moved = true; hot = null; t.hide(); cvs.classList.add("drag"); }
+    if (drag.moved) { if (drag.axis) panY(p.y - drag.y); else panX(p.x - drag.x); drag.x = p.x; drag.y = p.y; }
+    const now = performance.now();
+    drag.pts.push([p.x, now]);
+    while (drag.pts[0][1] < now - MOVE.hand) drag.pts.shift();  // the pointer of the last MOVE.hand ms gives the speed of the hand
+  });
+  const lift = e => {
+    fingers.delete(e.pointerId);
+    if (!drag) return;
+    if (fingers.size) { drag.gap = 0; drag.pts.length = 0; const p = [...fingers.values()][0]; drag.x = p.x; drag.y = p.y; return; }  // one finger of a pinch is left: it drags on
+    const d = drag;
+    drag = null; CZ.held = null; cvs.classList.remove("drag");
+    if (e.type !== "pointerup") return;  // a drag that the browser took away (pointercancel) throws nothing
+    ptr = e.pointerType === "touch" ? null : {p: pos(e), e: {clientX: e.clientX, clientY: e.clientY}};  // a finger that is lifted points at nothing
+    if (d.moved && !d.axis) throwX(d.pts);
+  };
+  cvs.addEventListener("pointerup", lift); cvs.addEventListener("pointercancel", lift);
+  cvs.addEventListener("pointerleave", () => { ptr = null; if (!drag && hot) { hot = null; t.hide(); redraw(); } });
+  cvs.addEventListener("dblclick", () => { czHalt(); CZ.x = CZ.y = null; bars(); redraw(); });
+  const lb = s => el("span", "lb", s);
+  bar.append(lb("across"), segX, segZ, lb("tokens"), segY, el("span", "h", "A pinch, or Ctrl or ⌘ with the wheel, zooms. A drag or a sideways scroll moves. On the left axis the pinch and the drag act on the tokens."));
+  bars();
+  const keys = marks.length ? [["hit", "hit: read from the cache", CC.hit, "b"], ["write", "written to the cache", CC.write, "b"]] : [];
+  keys.push(["lease", "lease: what the cache keeps (paler once nothing reads it)", CC.lease, "b"]);
+  if (marks.some(m => m.side)) keys.push(["side", "a second agent on this session id", CC.side, "b"]);
+  keys.push(["sent", "sent (ACE's count)", TK.sent], ["seen", "the model's count", TK.seen], ["raw", "without ACE", TK.raw], ["target", "target", "var(--faint)"], ["fold", "fold", TK.fold, "d"]);
+  if (pts.some(p => p.act === "ratchet")) keys.push(["fold", "target raised (ratchet)", TK.fold, "r"]);  // a ring, as on the chart
+  const key = el("div", "key kz");
+  for (const [id, name, c, cls] of keys) {  // a click on a name hides or shows what it names
+    const s = el("span", CZ.off.has(id) ? "off" : ""), i = el("i", cls);
+    i.style.setProperty("--c", c); s.append(i, name); s.dataset.k = id; s.tabIndex = 0; s.setAttribute("role", "button"); s.title = "Hide or show";
+    s.onclick = () => { if (!CZ.off.delete(id)) CZ.off.add(id); for (const x of key.children) x.classList.toggle("off", CZ.off.has(x.dataset.k)); redraw(); };
+    s.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); s.onclick(); } };
+    key.append(s);
+  }
+  const T = M.L.totals, facts = [];
+  if (M.old) facts.push("This page is newer than its server. Start the viewer again to see the hit and the write of each request");
+  if (T && marks.length) {
+    const sides = marks.filter(m => m.side).length, k = T.kinds || {}, u = T.unread || {}, o = T.orphan || {};
+    facts.push(`${marks.length - sides} requests of the chat` + (sides ? ` and ${sides} of a second agent on its session id` : ""));
+    facts.push(`${k.hit || 0} read all that the cache held, ${k.part || 0} only its lower part, ${k.miss || 0} nothing`);
+    facts.push(`a lease lasts ${czDur(M.ttl)} after its last read`);
+    facts.push(`written ${kfmt(T.write_tok)}` + (T.store_usd ? ` (${czUsd(T.store_usd)})` : "") + `, read ${kfmt(T.read_tok)}` + (T.read_usd ? ` (${czUsd(T.read_usd)})` : "")
+      + (T.uncached_usd ? `, the same tokens with no cache ${czUsd(T.uncached_usd)}` : ""));
+    if (u.n) facts.push(`${u.n} leases ran out with no read: ${kfmt(u.tok)} tokens` + (u.usd ? ` (${czUsd(u.usd)})` : ""));
+    if (o.reads) facts.push(`${o.reads} read${o.reads > 1 ? "s" : ""} of cache that the log has no write of`);
+  }
+  box.append(bar, cvs, key);
+  if (facts.length) box.append(el("div", "s czf", facts.join(" · ") + "."));
+  paint();
+  if (CZ.gx != null) { if (performance.now() - CZ.gt < 500) gliding = requestAnimationFrame(glideTick); else czHalt(); }  // the glide of the chart before this one goes on here
   return box;
 }
 // candles: open, high, low and close of the sent size over a run of requests; orange when the run holds a fold
@@ -2341,12 +2747,12 @@ function drawTrk(d, note) {
   head.append(el("h4", null, "Context size"), pills, el("span", "sub", d.session ? `${d.session} · ${d.points.length} requests` + (d.session === d.current ? " · the current session" : "") : "ace.log has no request yet"));
   if (note) head.append(el("span", "tkn", note));
   const grid = el("div", "tk c" + trkGrid().cols);
-  grid.append(lineChart(d), candleChart(d), pieChart(d), cutChart(d), sessionBars(d));
+  grid.append(sizeChart(d), candleChart(d), pieChart(d), cutChart(d), sessionBars(d));
   box.textContent = ""; box.append(head, tiles(d), grid);
   [box.scrollLeft, box.scrollTop] = keep;
   trkLast = [d, note, box.clientWidth];
 }
-const trkKeyOf = (d, note) => { const p = d.points[d.points.length - 1]; return [d.session, d.points.length, p ? p.ts : 0, d.all.requests, $("trk").clientWidth, trkMode, note].join(":"); };
+const trkKeyOf = (d, note) => { const p = d.points[d.points.length - 1], T = (d.leases || {}).totals; return [d.session, d.points.length, p ? p.ts : 0, d.all.requests, T ? T.n + "/" + T.reads + "/" + T.open : "", $("trk").clientWidth, trkMode, note].join(":"); };
 function trkFit() {  // the window changed size: draw the last data again at the new width now (the 2 s timer would lag)
   if (!$("trkon").checked || !trkLast || $("trk").clientWidth === trkLast[2]) return;
   trkKey = trkKeyOf(trkLast[0], trkLast[1]); drawTrk(trkLast[0], trkLast[1]);
@@ -2361,7 +2767,8 @@ function trk() {
   }).then(res => {
     if (!res) return;
     const [d, note] = res, key = trkKeyOf(d, note);
-    if (key === trkKey) return;
+    // the hand holds the chart: new data waits for a tick after it lets go (a hold with no move for 5 s is taken as let go)
+    if (key === trkKey || (CZ.held && CZ.held.isConnected && performance.now() - CZ.heldAt < 5000)) return;
     trkKey = key; drawTrk(d, note);
   }).catch(err => msg(err.message));
 }
@@ -2370,6 +2777,7 @@ $("ctxon").addEventListener("change", () => { if ($("ctxon").checked) $("trkon")
 $("trkon").addEventListener("change", () => { if ($("trkon").checked) $("ctxon").checked = false; ctxMode(); resize(); ctxKey = ""; trkKey = ""; context(); trk(); });
 $("ctxon").checked = HASH.get("context") === "1";
 $("trkon").checked = HASH.get("size") === "1" || HASH.get("track") === "1";
+if (HASH.get("pin")) { trkMode = "pin"; trkPin = HASH.get("pin"); }  // a link names the chat that the Size view charts
 if ($("trkon").checked) $("ctxon").checked = false;
 ctxMode();
 resize();
@@ -2405,9 +2813,10 @@ const MEA_UNITS = [
   ["event", "Event", "The context events of the chat in focus: recall, find, open, compress. Click a chat row first."]];
 const MEA_GROUP = {db: "state.db · one number for each chat", cost: "cost · state.db session_model_usage, by model and task",
   usage: "usage.log · one number for each request", ace: "ace.log · ACE, one number for each request",
+  cache_cost: "cache cost · usage.log, priced at the price port (store, read, and the same tokens uncached)",
   rcpt: "receipts · what the context events put in", store: "the store · the size of crumbs"};
 const MEA_WHY = {db: "no state.db beside this store", cost: "no state.db beside this store", usage: "no usage.log yet",
-  ace: "no ace.log yet", rcpt: "no receipts in this store", store: "no chats in this store"};
+  ace: "no ace.log yet", rcpt: "no receipts in this store", store: "no chats in this store", cache_cost: "no usage.log yet"};
 const MEA_FIRST = ["cost_usd", "u_prompt", "in_tok", "ace_sent", "ctx_bytes", "size"];  // the measure to show when none is chosen
 const MEA_MODELS = ["#f6c177", "#4fd1c5", "#c39bd3", "#f38ba8", "#8bd17c", "#7aa2ff", "#fab387", "#e5c07b", "#56b6c2", "#d19a66"];
 const MEA_LUT = Array.from({length: 48}, (_, i) => { const t = i / 47; return `hsl(214,${Math.round(52 + 38 * t)}%,${Math.round(15 + 52 * t)}%)`; });
@@ -3606,6 +4015,7 @@ function meaFooter() {
 
 // the poll interval in milliseconds: the dial update_ms (view.py fills it in; opened as a file, it is the default 2000)
 const UPDATE_MS = Number("__UPDATE_MS__") || 2000;
+const LIVE_ON = "__LIVE__" !== "0";  // the dial live (on by default; off, the page does not ask the store what changed)
 // -- on and off, the frame, the poll ------------------------------------------------------------------------------------------------
 let meaLast = 0;
 function meaFrame(t) {
@@ -3713,6 +4123,64 @@ function meaDrawUsage(sid, d) {
   [box.scrollLeft, box.scrollTop] = keep;
 }
 showTrail(); load(); follow(); setInterval(follow, UPDATE_MS); setInterval(context, UPDATE_MS); setInterval(trk, UPDATE_MS); trk();
+// Live: every UPDATE_MS the page asks which of its data changed (api/changes). The store or its logs changed: the graph
+// is read again (the nodes stay where they are; the cue edges are replaced, not added to). This chat's config changed:
+// the settings panel reads it again when it is open. Nothing is reloaded while nothing changed.
+let LIVE = null;
+async function liveCheck() {
+  if (!LIVE_ON || document.hidden) return;
+  let s;
+  try { s = await api("changes"); } catch (e) { return; }
+  const viz = JSON.stringify(s.viz || {});
+  if (!LIVE) { LIVE = {store: s.store, logs: s.logs, config: JSON.stringify(s.config), viz}; return; }
+  // The dials update_ms and live are baked into this page at load. A change to either in any file of the chain
+  // reloads the page so the new interval takes effect; the rest of the page updates in place as before.
+  if (viz !== LIVE.viz) { LIVE.viz = viz; location.reload(); return; }
+  const cfg = JSON.stringify(s.config);
+  if ((s.store !== LIVE.store || s.logs !== LIVE.logs) && GRAPH.started && GRAPH.state !== "loading") {
+    LIVE.store = s.store; LIVE.logs = s.logs;
+    cueEdges.length = 0; GRAPH.state = "idle";
+    if (layout === "calendar") calLoad(); else loadGraph();
+  }
+  if (cfg !== LIVE.config) {
+    LIVE.config = cfg;
+    if (!$("settings-panel").hidden) loadSettings();
+  }
+}
+setInterval(liveCheck, UPDATE_MS); if (LIVE_ON) liveCheck();
+// Record from inception: the map is cleared and read again from the store while the canvas is captured (MediaRecorder).
+// The recording stops by hand (the button again), or 8 s after the graph is ready, or at 120 s. The webm is saved by the
+// browser through a link in the message line; nothing is sent anywhere.
+let REC = null;
+function recordStop() { if (REC && REC.rec.state !== "inactive") REC.rec.stop(); }
+function recordToggle() {
+  if (REC) { recordStop(); return; }
+  if (!window.MediaRecorder || !cv.captureStream) { msg("This browser cannot record the canvas."); return; }
+  const type = ["video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+  const chunks = [], rec = new MediaRecorder(cv.captureStream(30), type ? {mimeType: type} : {});
+  REC = {rec, t0: Date.now(), readyAt: 0};
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = () => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-"), a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(chunks, {type: rec.mimeType || "video/webm"}));
+    a.download = "breadcrumbs-graph-" + stamp + ".webm";
+    a.textContent = "Save the recording " + a.download;
+    $("msg").replaceChildren(a);
+    $("rec").classList.remove("on"); REC = null;
+  };
+  $("rec").classList.add("on");
+  nodes.clear(); roots.length = 0; cueEdges.length = 0;  // from inception: nothing drawn, the store is read again
+  GRAPH.state = "idle"; GRAPH.started = true; dirty = true; temp = Math.max(temp, 0.5);
+  rec.start(500);
+  if (layout === "calendar") calLoad(); else loadGraph();
+  msg("Recording the graph from inception. Press Record again to stop.");
+}
+$("rec").onclick = recordToggle;
+setInterval(() => {  // the auto stops: 120 s, and 8 s after the graph is ready
+  if (!REC) return;
+  if (GRAPH.state === "ready" && !REC.readyAt) REC.readyAt = Date.now();
+  if (Date.now() - REC.t0 > 120000 || (REC.readyAt && Date.now() - REC.readyAt > 8000)) recordStop();
+}, 500);
 const start = HASH.get("focus");
 if (start) setTimeout(() => revealId(start), 600);
 requestAnimationFrame(frame);

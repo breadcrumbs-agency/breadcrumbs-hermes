@@ -124,7 +124,7 @@ class LayerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.engine = ace.Ace(target_tokens=16000)  # under SMALL_TARGET: the small layer share
+        self.engine = ace.Ace(target_tokens=int(16000 * ace.TPB / 0.3))  # under SMALL_TARGET: the small layer share; sized for a prior of 0.3 tokens per byte, scaled to the prior now in use
         self.engine.on_session_start("s1", hermes_home=self.tmp.name)
         self.addCleanup(self.engine.close)
 
@@ -195,7 +195,7 @@ class LayerTest(unittest.TestCase):
         self.assertIn("\u00d72", layer)
 
     def test_the_model_counts_set_the_fixed_part_then_the_tokens_per_byte(self):
-        req = [SYSTEM] + chat(6)
+        req = [SYSTEM] + chat(int(6 * ace.TPB / 0.3))  # the target is scaled to the prior; the request keeps its size to it
         self.assertIsNone(self.select(req))  # under the target by the first estimate
         sent = ace.request_bytes(req)
         first = int(1.2 * self.engine.target_tokens)  # the tool schemas are in the count, not in the bytes

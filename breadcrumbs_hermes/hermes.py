@@ -51,7 +51,7 @@ except Exception:  # outside Hermes (tests, CLI): same methods, no base class
 SYSTEM_BLOCK = """## Breadcrumbs memory
 Past turns and memory entries are kept exactly, under content ids. A line "\u25b8 <id> ..." (handle) or "\u22ef <id>:a-b" (omitted lines) is a breadcrumb.
 - crumb(id, level): show a breadcrumb at a level from 0 (handle only) to 1 (all of it, verbatim). A handle shows the full size as "\u00b7Nt" (N tokens). Pick a level that shows a few hundred tokens, about 400 / N, then expand only the parts you need. Below level 1 a text shows its key words in text order (the most distinct words first, then the meaningful words); "\u2026" marks dropped words. Grammar words and exact wording come back only at level 1. A "sum" crumb is a summary that a small model wrote; its sources are exact. A session or span handle ends with cue words after "|": the words it uses more than the rest of the memory, in order of first use.
-- crumb_find(q): search all breadcrumbs by words. It returns each hit under the handle of its session.
+- crumb_find(q): search all breadcrumbs by words. It is the least-cost first check for anything already decided or written down (procedures, conventions, plans): search before reading files or git history. Each hit comes with the crumbs around it. It returns each hit under the handle of its session.
 The ids are the provenance. Cite them when you use a recalled fact."""
 
 TOOLS = [
@@ -67,9 +67,12 @@ TOOLS = [
                     "required": ["id", "level"]}},
     {"name": "crumb_find",
      "description": "Search the breadcrumbs of this chat's scope (its git repository or folder: past turns, memory "
-                    "entries) by words. Returns handles, each hit under its session handle; expand one with "
-                    "crumb(id, level). scope \"up\" also reads the scopes above this one and the default memory; "
-                    "scope \"all\" reads every scope of the profile.",
+                    "entries) by words. The least-cost place to check first: decisions, procedures, conventions and "
+                    "plans that were already written down are usually here, so search before reading files, "
+                    "git history or the web. Each hit comes with the crumbs around it "
+                    "(its neighbouring turns), often enough to answer without a file read. Returns handles, each hit "
+                    "under its session handle; expand one with crumb(id, level). scope \"up\" also reads the scopes "
+                    "above this one and the default memory; scope \"all\" reads every scope of the profile.",
      "parameters": {"type": "object",
                     "properties": {"q": {"type": "string"},
                                    "k": {"type": "integer", "minimum": 1, "maximum": 20},
@@ -89,19 +92,16 @@ HIVE_BLOCK = ("\n- With hive peers, crumb_find also shows a \"\u25c7 hive\" line
 # The delegation and dispatch handbook goes with the tool descriptions: a plugin skill that Hermes lists as
 # <plugin>:dispatch (register_handbook), named again in the prompt block under the tools.
 HANDBOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "dispatch", "SKILL.md")
-HANDBOOK_ABOUT = "Use when you delegate or dispatch work. Send exact crumbs."
-# The hierarchy skill goes beside it, as <plugin>:hierarchy: one lead and three lanes of models, the dials of each
-# lane, the sub-sessions, and the project that several gateways share. Hermes lists it in the skills index with its
-# description; the prompt block under the tools does not name it, so that block stays as long as it was.
-HIERARCHY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "hierarchy", "SKILL.md")
-HIERARCHY_ABOUT = "Use when you split work across models. Lanes, dials, hive."
+HANDBOOK_ABOUT = "Use when you delegate work. Exact crumbs, model lanes."
+# The same skill teaches the lanes (one lead and three lanes of models, a table and model_map routes for each
+# family). It is generated in the umbrella repository (breadcrumbs/skills/dispatch, tools/skills.py), never edited here.
 HANDBOOK_LINE = ("\n- Before you give work to a helper (delegate_task, message_agent, a cron job), read "
                  "skill_view(\"%s\"). It tells how to send exact crumbs, not your own words for them.")
 
 
 def register_handbook(ctx, provider):
-    """Register the handbook with the tools, and the hierarchy skill after it. A Hermes without plugin skills gets no
-    skill and no prompt line."""
+    """Register the handbook (the briefs and the lanes) with the tools. A Hermes without plugin skills gets no skill
+    and no prompt line."""
     if not hasattr(ctx, "register_skill"):
         return
     try:
@@ -110,10 +110,6 @@ def register_handbook(ctx, provider):
         return
     plugin = getattr(ctx, "name", None) or getattr(getattr(ctx, "manifest", None), "name", None)
     provider.handbook = "%s:dispatch" % (plugin or "breadcrumbs")
-    try:  # the second skill never takes the first one down: a refusal leaves the handbook and its prompt line in place
-        ctx.register_skill("hierarchy", HIERARCHY, HIERARCHY_ABOUT)
-    except Exception:
-        pass
 
 
 def register_handles(ctx):
@@ -291,8 +287,9 @@ class BreadcrumbsProvider(MemoryProvider):
             saved = True
         except (OSError, ValueError, KeyError):
             pass
-        cfg = dict(base_cfg, **dials.config(self.root)) if self.root != self.home_root else base_cfg  # a scope may override
-        self._dial(cfg, saved)
+        chain = workdir.config_chain(self.home_root, info=self.scope_info)  # a scope's file over the profile's (dials.resolve)
+        cfg = dict(base_cfg, **dials.config(self.root)) if self.root != self.home_root else base_cfg  # slot, hive: the nearer file's
+        self._dial(chain, saved)
         name = self._slot_name(cfg)
         if self.slot is not None and self.slot.name != name:
             self.slot.call("shutdown")

@@ -104,7 +104,7 @@ class HermesSettings(unittest.TestCase):
         def failing(profile, *args):
             raise SystemExit("breadcrumbs: hermes config get failed")
         with mock.patch.object(hs, "_config", REAL_CONFIG), \
-                mock.patch("breadcrumbs_hermes.adapter.hermes_config", failing):
+                mock.patch("breadcrumbs_hermes.hermescmd.hermes_config", failing):
             with self.assertRaisesRegex(ValueError, "hermes config get failed"):
                 hs.settings(self.root, "get")
 

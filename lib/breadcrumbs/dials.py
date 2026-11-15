@@ -15,6 +15,14 @@ of its range) gives the default, and an environment variable that is not valid i
 dials` says so, as it does for a key that is no dial (a typing mistake). It shows every dial with its value and
 where the value came from. The README of breadcrumbs-hermes holds the same table; a test there keeps the two equal.
 
+A chat can read more than one file: a chain, the widest first (for Hermes: the profile's file, then the file of the
+store of the chat's scope, <base>/scopes/<id>/config.json). resolve(), value() and options() take a dict (one file)
+or a chain [(label, dict), ...]. Then the order is: the default, the top level of each file in chain order, the
+built-in entries, the "models" globs of each file in chain order, the environment. So a scope's value beats its
+profile's at each level, and a profile's "models" entry still beats a scope's top level (a model entry is meant for
+that model wherever it runs). settings_chain() describes a chain for the explorer's widget; each source names its
+file by its label.
+
 A "models" entry also holds the request options of a model (temperature, top_p, top_k, ...): any key that is no
 dial and does not start with "ace_". So one entry holds a model's temperature and the ACE dials that suit that
 temperature (ace_core.Engine._dial). A harness that can change its request sends them
@@ -105,6 +113,10 @@ DIALS = (
          "The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the "
          "map, the context and the trail; the measures poll at three times it. Read from the top level of config.json "
          "and from the environment. A value of a 'models' entry is not used here."),
+    Dial("live", True, "bool", None, None, "Viewer", "BREADCRUMBS_LIVE",
+         "Whether the live viewers (the explorer page of /viz) ask the store every update_ms which of its data changed "
+         "(its index, its logs, this chat's config) and reload only that part. Off: the page loads once and reloads by "
+         "hand. Read from the top level of config.json and from the environment, as update_ms is."),
 )
 BY_KEY = {d.key: d for d in DIALS}
 
@@ -201,17 +213,26 @@ def _group_rank(group):
 
 
 def settings(root, model=None, environ=None):
-    """A JSON-ready description of the common dials for the CRUD widget.
+    """A JSON-ready description of the common dials for the CRUD widget: the one file <root>/config.json.
 
     ``model`` is both the model name used for resolution and, when a value is
     written, the exact key under ``models`` that receives the override.  The
     viewer normally leaves it empty for profile-wide settings and lets a
     harness-specific control supply a model glob when needed.
     """
+    return settings_chain([("config", root)], model, environ)
+
+
+def settings_chain(chain, model=None, environ=None):
+    """The widget's description of a chain of files [(label, folder), ...], the widest first. The values resolve
+    through the whole chain (resolve); the last file is the one that a write changes, so "overridden" and "models"
+    are of that file. "path" is its config.json, "chain" the config.json of each file with its label."""
     model = str(model or "")
-    cfg = config(root)
+    chain = [(str(label), folder) for label, folder in chain]
+    cfgs = [(label, config(folder)) for label, folder in chain]
+    cfg = cfgs[-1][1]
     rows = []
-    for row in resolve(cfg, model or None, environ):
+    for row in resolve(cfgs if len(cfgs) > 1 else cfg, model or None, environ):
         d = row.dial
         layer = cfg.get("models", {}).get(model, {}) if model and isinstance(cfg.get("models"), dict) else {}
         # update_ms is a top-level viewer dial even when the widget is
@@ -219,9 +240,11 @@ def settings(root, model=None, environ=None):
         overridden = d.key in cfg if d.key == "update_ms" else d.key in (layer if model else cfg)
         rows.append({"key": d.key, "value": row.value, "default": d.default, "source": row.source,
                      "overridden": overridden, "kind": d.kind, "min": d.lo, "max": d.hi,
-                     "group": d.group, "env": d.env, "doc": d.doc})
+                     "group": d.group, "env": d.env, "doc": d.doc, "problems": list(row.problems)})
     patterns = cfg.get("models") if isinstance(cfg.get("models"), dict) else {}
-    return {"path": os.path.join(root, "config.json"), "model": model,
+    return {"path": os.path.join(chain[-1][1], "config.json"), "model": model,
+            "chain": [{"label": label, "path": os.path.join(folder, "config.json"),
+                       "exists": os.path.isfile(os.path.join(folder, "config.json"))} for label, folder in chain],
             "models": list(patterns), "groups": [
                 {"name": group, "rows": [r for r in rows if r["group"] == group]}
                 for group in sorted(dict.fromkeys(r["group"] for r in rows), key=_group_rank)
@@ -301,12 +324,22 @@ def reset_settings(root, model=None, all_models=False):
     return settings(root, model)
 
 
+def chain_of(cfg):
+    """[(label, dict)]: a dict is one file, labelled "config"; a list of (label, dict) is a chain, the widest first."""
+    if isinstance(cfg, (list, tuple)):
+        return [(str(label), c if isinstance(c, dict) else {}) for label, c in cfg]
+    return [("config", cfg if isinstance(cfg, dict) else {})]
+
+
 def options(cfg, model):
-    """The dials of model: each glob of cfg["models"] that matches its name, merged in file order."""
-    out, name, models = {}, str(model or "").lower(), cfg.get("models")
-    for glob, opts in (models.items() if isinstance(models, dict) else ()):
-        if isinstance(opts, dict) and fnmatch.fnmatchcase(name, str(glob).lower()):
-            out.update(opts)
+    """The dials of model: each glob of "models" that matches its name, merged in file order (in a chain: each file in
+    chain order, so a scope's entry beats its profile's)."""
+    out, name = {}, str(model or "").lower()
+    for _label, c in chain_of(cfg):
+        models = c.get("models")
+        for glob, opts in (models.items() if isinstance(models, dict) else ()):
+            if isinstance(opts, dict) and fnmatch.fnmatchcase(name, str(glob).lower()):
+                out.update(opts)
     return out
 
 
@@ -349,20 +382,24 @@ Row = namedtuple("Row", "dial value source problems")
 
 
 def resolve(cfg, model=None, environ=None):
-    """One Row for each dial: the value that counts, where it came from, and what was ignored on the way."""
+    """One Row for each dial: the value that counts, where it came from, and what was ignored on the way. cfg is one
+    file (a dict) or a chain of files (chain_of); a source names the file by its label, and in a chain a "models"
+    entry by its file's label too."""
     environ = os.environ if environ is None else environ
-    cfg = cfg if isinstance(cfg, dict) else {}
-    models = cfg.get("models")
+    chain = chain_of(cfg)
+    one = len(chain) == 1
     mname = str(model or "").lower()
     rows = []
     for d in DIALS:
         value, source, bad = d.default, "default", []
-        layers = [("config", cfg)]
+        layers = list(chain)
         layers += [('models["%s"] (built in)' % glob, opts) for glob, opts in MODELS.items()
                    if fnmatch.fnmatchcase(mname, glob)]
-        for glob, opts in (models.items() if isinstance(models, dict) else ()):
-            if isinstance(opts, dict) and fnmatch.fnmatchcase(mname, str(glob).lower()):
-                layers.append(('models["%s"]' % glob, opts))
+        for label, c in chain:
+            models = c.get("models")
+            for glob, opts in (models.items() if isinstance(models, dict) else ()):
+                if isinstance(opts, dict) and fnmatch.fnmatchcase(mname, str(glob).lower()):
+                    layers.append((('models["%s"]' if one else label + ' models["%s"]') % glob, opts))
         for name, layer in layers:
             if d.key in layer:
                 v = valid(d, layer[d.key])

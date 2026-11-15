@@ -147,6 +147,12 @@ class Ace(Engine, ContextEngine):
     def home_folder(self):
         return str(self.home or _home())
 
+    def config_chain(self, root):
+        """The profile's config.json, then the one of the chat's scope (workdir.config_folders): ACE reads the dials
+        from the same files as the provider."""
+        from .workdir import config_chain
+        return config_chain(root)
+
     def _cannot_open(self, head):
         """True for a delegate_task child whose system prompt does not name the crumb tool. Hermes gives
         select_context the messages and no tool list, so this reads the two facts that it does give: the platform

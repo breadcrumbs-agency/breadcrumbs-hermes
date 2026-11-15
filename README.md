@@ -219,6 +219,12 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
   box opens the evidence view (where this view reads, as QR codes with the JSON beneath), and a click on the breadcrumbs
   mark opens the settings widget, whose Hermes section has two switches: breadcrumbs as `memory.provider` and as
   `context.engine` of the profile (`hermes config`; Revert restores the earlier value).
+  The widget's "Config file" picker lists the `config.json` of every profile of the Hermes root and of each scope of
+  each profile (a profile that opted out with `no-vis` is left out), and says which chats read each one. Hermes runs a
+  chat under the profile of its process, so the CLI, the TUI, the desktop app, the gateway's bots, cron jobs and
+  delegate_task children of a profile all read its file; a chat whose folder is a scope also reads that scope's file,
+  whose values win. The provider, ACE and the model request options all read this same chain
+  (`workdir.config_folders`), and the Hermes section switches the profile of the chosen file.
 - **One core for every harness** (`breadcrumbs/core.py`): six read-only verbs (`find`, `open`, `zoom`, `trail`, `stores`, `health`) over all stores at once (`~/.hermes`, each profile, and `--home` as `local`), held open in one process. Three thin servers carry the same table: `python -m breadcrumbs core mcp` (MCP over stdio), `core sock` (a Unix socket, mode 0600; `--tcp PORT` adds loopback TCP that wants `core.token`) and `core a2a` (A2A 0.3 on 127.0.0.1 with a bearer token). A client names itself (MCP `clientInfo`, the A2A `User-Agent` or `X-Harness`, the `harness` field of a socket request); the core tells Hermes, Claude Code, Codex and OpenCode apart, counts their calls in `health`, and `core setup [HARNESS]` prints the command that adds the MCP server to each one.
 - **The explorer.** It opens a session as a document: turn frames, phase bands, tool and file cards. It draws
   the receipts as a Gantt chart (crumbs by turns; each bar holds the text that the model saw) and a Venn of
@@ -423,6 +429,22 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `overflow_high` | 0.05 | 0 to 1 |  | The controller lowers the budget when more turns than this share overflow. |
 | `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only), writes them to the child's own store (the folder children/ID of the breadcrumbs folder), and exports them there as a CAR file. It then imports the CAR into the profile's own store as private crumbs. When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
 | `update_ms` | 2,000 | 200 to 60000 | `BREADCRUMBS_UPDATE_MS` | The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the map, the context and the trail; the measures poll at three times it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
+| `live` | true | true or false | `BREADCRUMBS_LIVE` | Whether the live viewers (the explorer page of /viz) ask the store every update_ms which of its data changed (its index, its logs, this chat's config) and reload only that part. Off: the page loads once and reloads by hand. Read from the top level of config.json and from the environment, as update_ms is. |
+
+| Environment knob | Default | What it does |
+|---|---|---|
+| `BREADCRUMBS_HOME` | <HERMES_HOME>/breadcrumbs | The directory of the store, for the command line. |
+| `BREADCRUMBS_TOOL_PREFIX` | mcp__ | The prefix of the tool names (`mcp__crumb`). Hermes on the Anthropic OAuth wire needs it. |
+| `BREADCRUMBS_SLOT` | (none) | The name of another memory provider to run through breadcrumbs. Wins over config.json "slot". |
+| `BREADCRUMBS_SUMMARIZE` | auto | `0`: never run the small summary model. `auto`: run it when the model and the binary exist. |
+| `BREADCRUMBS_SUM_MODEL` | ~/models/Qwen_Qwen3.5-0.8B-Q4_K_M.gguf | The GGUF file of the summary model. |
+| `BREADCRUMBS_LLAMA` | llama-completion on the PATH | The llama.cpp binary that runs the summary model. |
+| `BREADCRUMBS_SUM_TEMPLATE` | qwen | The prompt template of the summary model. |
+| `BREADCRUMBS_CRC32C` | (auto) | `pure`: use the pure-Python CRC32C even when google-crc32c is installed. |
+| `BREADCRUMBS_GRAALPY` | (auto) | The GraalPy binary for the GraalPy runs. |
+| `BREADCRUMBS_GRAAL_HEAP` | 4g | The heap of a GraalPy run. |
+| `BREADCRUMBS_IPFS` | ipfs on the PATH | The kubo binary, for `push`, `pull` and the hive. |
+| `BREADCRUMBS_HERMES_REPO` | ~/.hermes/hermes-agent | The Hermes checkout that `seat` commands read. |
 
 | Environment knob | Default | What it does |
 |---|---|---|

@@ -126,6 +126,39 @@ def resolve(base: str, kwargs: Optional[dict] = None, cfg: Optional[dict] = None
     return info
 
 
+def config_folders(base: str, kwargs: Optional[dict] = None, info: Optional[dict] = None) -> List[Tuple[str, str]]:
+    """[(label, folder)] of the config.json files that a chat reads, the widest first: the profile's (base), then the
+    one of the store of the chat's scope when that store exists. Every reader of the dials takes this chain (the
+    provider, ACE and the request options), so a scope's file counts the same for each, and the explorer shows the same
+    chain (config_layers.py). `info` is a resolve() that the caller has; without one the scope is looked up here, with
+    no folder made. Each dial resolves through the chain (dials.resolve)."""
+    from breadcrumbs import dials
+
+    out = [("profile", base)]
+    if info is not None:
+        store = info.get("store") or base
+    else:
+        store = base
+        if enabled(dials.config(base)):
+            found = scope.nearest(chat_cwd(kwargs))
+            if found and not (found[0] == scope.DIR and is_home(found[1])):
+                store = scope.store_home(base, found[1])
+    if os.path.realpath(store) != os.path.realpath(base) and os.path.isdir(store):
+        out.append(("scope", store))
+    return out
+
+
+def config_chain(base: str, kwargs: Optional[dict] = None, info: Optional[dict] = None):
+    """The dials input of a chat: the dict of the profile's config.json alone, or a chain [(label, dict)] with its
+    scope's (see config_folders)."""
+    from breadcrumbs import dials
+
+    folders = config_folders(base, kwargs, info)
+    if len(folders) == 1:
+        return dials.config(base)
+    return [(label, dials.config(folder)) for label, folder in folders]
+
+
 def stores_above(base: str, info: dict) -> List[Tuple[str, str, str]]:
     """[(label, root, store folder)] of the scopes above the chat's scope that have a store, then the default
     memory when the chat is in a scope: where scope "up" reads."""
