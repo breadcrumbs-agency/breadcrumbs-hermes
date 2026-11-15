@@ -43,10 +43,17 @@
     for (let m = 0; m < NM; m++) {
       mStart[m] = w;
       const x0 = colX(colOf[m]), unit = CWID / CHARS;
-      for (let k = 0; k < LS[m].length; k++) {
+      // The words are counted over the text the lines cover, as folds.json counts them: a word cut across two lines is one
+      // word, drawn in the line where it starts (counting each line alone counted it twice).
+      const raw = D.texts[D.msg[m][0]], cuts = D.cuts[D.msg[m][0]], starts = [];
+      for (let o = 0, n = 0; n < cuts.length; n++) { starts.push(o); o += cuts[n]; }
+      const head = raw.slice(0, starts.length ? starts[starts.length - 1] + cuts[cuts.length - 1] : 0);
+      let k = 0;
+      TOKEN.lastIndex = 0;
+      for (let mt; (mt = TOKEN.exec(head));) {
+        while (k + 1 < starts.length && mt.index >= starts[k + 1]) k++;
         const ln = LS[m][k], sx = unit * Math.min(1, CHARS / Math.max(ln.length, 1)), y = Y0 + (rowOf[m] + k) * ROWP + (ROWP - BARH) / 2;
-        TOKEN.lastIndex = 0;
-        for (let mt; (mt = TOKEN.exec(ln));) { WX[w] = x0 + mt.index * sx; WW[w] = Math.max(mt[0].length * sx, 0.0016); WY[w] = y; w++; }
+        WX[w] = x0 + (mt.index - starts[k]) * sx; WW[w] = Math.max(mt[0].length * sx, 0.0016); WY[w] = y; w++;
       }
       if (w - mStart[m] !== D.msg[m][2]) throw new Error(`level 5: message ${m} has ${w - mStart[m]} words, folds.json has ${D.msg[m][2]}`);
       const s = D.st[m]; for (let j = 0; j < s.length; j++) WS[mStart[m] + j] = s.charCodeAt(j) - 48;
