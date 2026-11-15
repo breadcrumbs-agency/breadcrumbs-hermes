@@ -40,9 +40,13 @@ def monogram(key, label):
 
 
 def table():
-    """[{key, label, icon}] for each harness that this process loaded, in the order of the harness table. Every entry
-    has an icon: the one that the harness gave, else its monogram."""
-    return [{"key": key, "label": entry["label"], "icon": entry.get("icon") or monogram(key, entry["label"])}
+    """[{key, label, icon, repository?, pages?}] for each loaded harness, in table order.
+
+    Every entry has an icon: the one that the harness gave, else its monogram. Optional repository and Pages URLs let
+    the explorer put the harness's project links beside the top-left mark.
+    """
+    return [{"key": key, "label": entry["label"], "icon": entry.get("icon") or monogram(key, entry["label"]),
+             **({k: entry[k] for k in ("repository", "pages") if entry.get(k)})}
             for key, entry in ports.harnesses().items()]
 
 

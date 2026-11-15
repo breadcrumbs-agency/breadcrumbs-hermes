@@ -1,4 +1,4 @@
-"""Views of a store: the explorer's data, the trail, and a read-only server on 127.0.0.1.
+"""Views of a store: the explorer's data, the trail, and a local server on 127.0.0.1.
 
 The page (view.html) lays crumbs out as SpaceGraph does: Graph2D nodes sized by priority, the
 Force2D layout, and the Zoomed camera, whose zoom stack is the trail. This module gives
@@ -1562,7 +1562,7 @@ class View(Reader):
         if harness:
             info["harness"] = harness
         text = "breadcrumbs-where/1 " + json.dumps(info, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
-        return {"text": text, "parts": [qr.rows(qr.encode(p, "M")) for p in qr.chain(text, "M")]}
+        return {"text": text, "json": info, "parts": [qr.rows(qr.encode(p, "M")) for p in qr.chain(text, "M")]}
 
     def where(self, sid=None):
         """The evidence of where this view reads: the store (a profile's, or the scope of a folder), the profile, the folder
@@ -1706,6 +1706,33 @@ class View(Reader):
                     out[ref] = ref
         return out
 
+    def settings(self, action="get", payload=None):
+        """Read or mutate common dials plus the selected harness's optional settings port."""
+        payload = dict(payload or {})
+        model = payload.get("model") or ""
+        target = payload.get("target", "common")
+        if action == "get" or target == "harness":
+            common = dials.settings(self.root, model)
+        if target == "common" and action == "set":
+            common = dials.set_setting(self.root, payload.get("key"), payload.get("value"), model)
+        elif target == "common" and action == "delete":
+            common = dials.delete_setting(self.root, payload.get("key"), model)
+        elif target == "common" and action == "reset":
+            common = dials.reset_settings(self.root, model, bool(payload.get("all_models")))
+        elif action != "get" and target != "harness":
+            raise ValueError("unknown settings action: %s" % action)
+
+        requested = str(payload.get("harness") or payload.get("h") or "").strip()
+        here = harness_info(requested).get("here")
+        entry = ports.harnesses().get(here) if here else None
+        custom = entry.get("settings") if entry else None
+        # A common-dial mutation must never be forwarded as a harness setting
+        # mutation.  The widget needs the current harness section in the same
+        # response, so read it while the common target is being edited.
+        harness = (custom(self.root, action, payload) if custom and target == "harness"
+                   else custom(self.root, "get", payload) if custom else None)  # ports.settings(root, action, payload)
+        return {"common": common, "harness": harness, "harness_key": here}
+
     def _edge_ts(self, ref, last):
         """The time of the first (or last) leaf of a crumb: the way down follows one kid, so it reads a few crumbs, not the tree."""
         c = self.crumb_or_none(ref)
@@ -1795,12 +1822,16 @@ EXPLORER_API = {
     "/api/where": lambda v, q: v.where(q.get("sid") or None),  # the evidence QR of the harness box: store, scope, profile, folder, chat
     "/api/qr": lambda v, q: v.evidence(q.get("sid") or None, q.get("h") or ""),  # the codes of the evidence line (view.evidence)
     "/api/harness": lambda v, q: harness_info(q.get("h") or None),  # the program of this view and the icons: the mark beside the brand
+    "/api/settings": lambda v, q: v.settings("get", q),
 }
 
 
 def make_server(root, port=8765, host="127.0.0.1"):
-    """A read-only HTTP server for the page and its API (one View shared by every request). The View hides the sessions
-    and the profile that opted out of visualization (novis)."""
+    """An authenticated HTTP server for the page and its API (one View shared by every request).
+
+    Reads are the normal path; the settings route also accepts authenticated CRUD mutations for the common dials and
+    the selected harness's own settings. The View hides the sessions and profile that opted out of visualization.
+    """
     view, key, routes = View(root, hide=hide_of(root)), token(root), {**API, **EXPLORER_API}
 
     class Handler(BaseHTTPRequestHandler):
@@ -1820,6 +1851,36 @@ def make_server(root, port=8765, host="127.0.0.1"):
             except (ValueError, TypeError) as e:
                 return self._send(400, "application/json", json.dumps({"error": str(e)}).encode())
             self._send(200, "application/json; charset=utf-8", body)
+
+        def _mutate_settings(self, method):
+            url = urlsplit(self.path)
+            q = {k: v[0] for k, v in parse_qs(url.query).items()}
+            if url.path != "/api/settings":
+                return self._send(404, "application/json", b'{"error": "not found"}')
+            if not hmac.compare_digest(q.get("k", ""), key):
+                return self._send(403, "application/json", b'{"error": "token"}')
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length > 1_000_000:
+                    raise ValueError("settings body is too large")
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("settings body must be an object")
+                body.setdefault("harness", q.get("h", ""))
+                action = body.get("action") or ("delete" if method == "DELETE" else "set")
+                result = view.settings(action, body)
+                return self._send(200, "application/json; charset=utf-8", json.dumps(result, ensure_ascii=False).encode("utf-8"))
+            except (KeyError, ValueError, TypeError) as e:
+                return self._send(400, "application/json", json.dumps({"error": str(e)}).encode())
+
+        def do_POST(self):
+            return self._mutate_settings("POST")
+
+        def do_PUT(self):
+            return self._mutate_settings("PUT")
+
+        def do_DELETE(self):
+            return self._mutate_settings("DELETE")
 
         def _send(self, code, kind, body):
             self.send_response(code)

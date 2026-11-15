@@ -15,4 +15,4 @@ dependencies = ["google-crc32c>=1.5,<2; platform_python_implementation == 'CPyth
 packages = ["breadcrumbs_hermes"]
 
 [tool.setuptools.package-data]
-breadcrumbs_hermes = ["skills/*/SKILL.md"]
+breadcrumbs_hermes = ["skills/*/SKILL.md", "icon.png"]

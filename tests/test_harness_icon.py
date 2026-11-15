@@ -22,6 +22,17 @@ class HermesIcon(unittest.TestCase):
         self.assertEqual(struct.unpack(">II", png[16:24]), (96, 96))  # sharp at 24 px on a screen of 3x
         self.assertLess(len(png), 20_000, "it travels in the answer of a route, so it stays small")
 
+    def test_the_harness_box_has_what_the_codex_box_has(self):
+        # The explorer's harness box (spacegraph view.html showHarness) draws the pages and repo links of the entry, and
+        # the mark opens the entry's settings section: Hermes gives all three, as Codex does.
+        entry = self.entry()
+        self.assertTrue(callable(entry["settings"]))
+        self.assertEqual(entry["repository"], "https://github.com/breadcrumbs-agency/breadcrumbs-hermes")
+        self.assertEqual(entry["pages"], "https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/")
+        from breadcrumbs_spacegraph import harness
+        me = next(r for r in harness.table() if r["key"] == "hermes")
+        self.assertEqual((me["repository"], me["pages"]), (entry["repository"], entry["pages"]))
+
 
 if __name__ == "__main__":
     unittest.main()

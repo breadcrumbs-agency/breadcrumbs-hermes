@@ -12,9 +12,17 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #bar{position:fixed;top:0;left:0;right:0;height:42px;display:flex;align-items:center;gap:2px;padding:0 10px;
   background:var(--panel);border-bottom:1px solid var(--line);z-index:5}
 #brand{display:flex;align-items:center;gap:8px;font-weight:600;margin-right:12px;white-space:nowrap}
-#brand b{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:12px;
+#brandmark{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:12px;
   background:linear-gradient(135deg,#5b9cff,#9b8cff)}
-#brand b svg{width:13px;height:13px}  /* the mark: four crumbs that climb */
+#brandmark svg{width:13px;height:13px}  /* the mark: four crumbs that climb */
+#brandmark:hover{box-shadow:0 0 0 2px rgba(91,156,255,.35)}
+#brandlinks{display:inline-flex;gap:6px;margin-left:2px;font-size:10px;font-weight:500}
+#brandlinks a{color:var(--dim);text-decoration:none}
+#brandlinks a:hover{color:var(--accent);text-decoration:underline}
+#brandlinks a[hidden],#hlinks a[hidden]{display:none}
+#hlinks{display:inline-flex;gap:5px;margin-left:3px;font-size:10px;font-weight:500}
+#hlinks a{color:var(--dim);text-decoration:none}
+#hlinks a:hover{color:var(--accent);text-decoration:underline}
 #harness{display:inline-flex;align-items:center;gap:7px;height:20px;margin-left:4px;padding-left:12px;border-left:1px solid var(--line2);
   color:var(--dim);font-weight:500}  /* the program whose memory this is: its icon (api/harness) */
 #harness[hidden]{display:none}
@@ -24,9 +32,42 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   background:var(--card);box-shadow:0 8px 28px #000a}
 #evidence[hidden]{display:none}
 #evidence .codes{display:flex;flex-wrap:wrap;gap:10px}
-#evidence canvas{width:196px;height:196px;image-rendering:pixelated;background:#fff;border-radius:4px;display:block}
+#evidence canvas{width:auto;height:auto;image-rendering:pixelated;background:#fff;border-radius:0;display:block}
 #evidence figcaption{margin-top:3px;color:var(--dim);font-size:11px;text-align:center}
 #evidence p{margin:8px 0 0;max-width:410px;color:var(--dim);font-size:11px;line-height:1.4;overflow-wrap:anywhere;user-select:all}
+#evidence .evidence-json{margin:8px 0 0;max-width:410px;max-height:72px;overflow:auto;color:var(--faint);font:8px/1.2 var(--mono);white-space:pre-wrap;user-select:all}
+#settings-panel{position:fixed;top:44px;left:12px;z-index:29;width:min(760px,calc(100vw - 24px));max-height:calc(100vh - 68px);overflow:auto;padding:14px;border:1px solid var(--line2);border-radius:10px;background:var(--card);box-shadow:0 8px 28px #000a}
+#settings-panel[hidden]{display:none}
+#settings-panel header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+#settings-panel h3{margin:0;font-size:14px}
+#settings-panel .x{margin-left:auto;width:24px;height:24px;border-radius:6px;color:var(--dim);text-align:center;font-size:16px}
+#settings-panel .x:hover{background:rgba(255,255,255,.06);color:var(--fg)}
+#settings-panel .settings-note{color:var(--dim);font-size:11.5px;margin-bottom:10px}
+#settings-panel .settings-bar{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0 12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+#settings-panel .settings-bar label{display:flex;flex-direction:column;gap:3px;color:var(--dim);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+#settings-panel input,#settings-panel select{height:27px;padding:0 7px;border:1px solid var(--line2);border-radius:6px;background:var(--bg);color:var(--fg);font:12px var(--mono)}
+#settings-panel input[type=checkbox]{height:16px;width:16px;accent-color:var(--accent)}
+#settings-panel .settings-bar input{width:180px}
+#settings-panel .settings-actions{display:flex;gap:6px;margin-left:auto}
+#settings-panel .settings-group{margin:12px 0 16px}
+#settings-panel .settings-group h4{margin:0 0 4px;font-size:11px;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
+#settings-panel .settings-row{display:grid;grid-template-columns:minmax(150px,1fr) 180px minmax(110px,1.7fr) minmax(70px,auto) auto auto;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(255,255,255,.05)}
+#settings-panel .settings-row .name{font:12px var(--mono)}
+#settings-panel .dialbox{display:flex;align-items:center;gap:6px}
+#settings-panel .dialbox input[type=range]{flex:1;min-width:70px;height:20px;padding:0;accent-color:var(--accent)}
+#settings-panel .dialbox input[type=number]{width:64px}
+#settings-panel input.switch{appearance:none;-webkit-appearance:none;width:42px;height:24px;border-radius:12px;background:var(--line2);position:relative;cursor:pointer;border:0}
+#settings-panel input.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--fg);transition:left .12s}
+#settings-panel input.switch:checked{background:var(--accent)}
+#settings-panel input.switch:checked::after{left:21px}
+#settings-panel .settings-row .doc{color:var(--dim);font-size:11px;line-height:1.3}
+#settings-panel .settings-row .source{color:var(--faint);font-size:10px;white-space:nowrap}
+#settings-panel .settings-row .btn{height:25px;padding:0 8px;font-size:11px}
+#settings-panel .settings-harness{margin:0 0 18px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+#settings-panel .settings-empty{color:var(--dim);font-size:11.5px;padding:5px 0}
+#settings-panel .settings-error{color:#f38ba8;font-size:11.5px;margin:5px 0}
+#settings-panel .settings-status{color:#8bd5ca;font-size:11px;min-height:16px;margin:4px 0}
+@media (max-width:900px){#settings-panel .settings-row{grid-template-columns:1fr 150px minmax(70px,auto) auto auto}.settings-row .doc{display:none}}
 #harness img{width:20px;height:20px;border-radius:6px;display:block}
 .tool{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;color:var(--dim);
   white-space:nowrap;user-select:none;border:1px solid transparent;cursor:pointer}
@@ -231,8 +272,23 @@ body:has(#mea.on) #side{z-index:6}
 .big{font-size:22px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
 </style></head><body>
 <div id="evidence" hidden role="dialog" aria-label="where this view reads from"></div>
+<section id="settings-panel" hidden role="dialog" aria-label="Breadcrumbs settings">
+  <header><h3>Breadcrumbs settings</h3><button class="x" id="settings-close" title="Close settings">&times;</button></header>
+  <div class="settings-note">Common Breadcrumbs dials are stored with this memory. Harness settings stay separate and are shown below when the active harness provides them.</div>
+  <div class="settings-bar">
+    <label>Model <input id="settings-model" placeholder="profile-wide"></label>
+    <div class="settings-actions">
+      <button class="btn" id="settings-reload">Reload</button>
+      <button class="btn" id="settings-reset">Revert selected overrides</button>
+      <button class="btn" id="settings-reset-all">Reset all dials</button>
+    </div>
+  </div>
+  <div id="settings-status" class="settings-status" aria-live="polite"></div>
+  <div id="settings-harness" class="settings-harness"></div>
+  <div id="settings-common"></div>
+</section>
 <div id="bar">
-  <div id="brand"><b><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="#0b0b0d"><circle cx="12" cy="44" r="5"/><circle cx="26" cy="34" r="5"/><circle cx="38" cy="22" r="5.5"/><circle cx="48" cy="10" r="6"/></g></svg></b>breadcrumbs<span id="harness" hidden><img id="hicon" alt="" width="20" height="20"><span id="hname"></span></span></div>
+  <div id="brand"><button id="brandmark" title="Breadcrumbs settings" aria-label="Open Breadcrumbs settings"><svg viewBox="0 0 58 58" aria-hidden="true"><g fill="#0b0b0d"><circle cx="12" cy="44" r="5"/><circle cx="26" cy="34" r="5"/><circle cx="38" cy="22" r="5.5"/><circle cx="48" cy="10" r="6"/></g></svg></button><span>breadcrumbs</span><span id="brandlinks"><a id="agency-pages" href="https://breadcrumbs-agency.github.io/" target="_blank" rel="noopener" title="Breadcrumbs Agency GitHub Pages">agency pages</a><a id="agency-repo" href="https://github.com/breadcrumbs-agency/breadcrumbs-codex" target="_blank" rel="noopener" title="Breadcrumbs Codex repository">repo</a></span><span id="harness" hidden><img id="hicon" alt="" width="20" height="20"><span id="hname"></span><span id="hlinks"><a id="hpages" target="_blank" rel="noopener" title="Harness GitHub Pages">pages</a><a id="hrepo" target="_blank" rel="noopener" title="Harness repository">repo</a></span></span></div>
   <button class="tool" id="home" title="All sessions"><svg class="i" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Overview</button>
   <label class="tool"><input type="checkbox" id="ctxon"><svg class="i" viewBox="0 0 16 16"><path d="M2 4h7M5 8h9M2 12h5"/></svg>Context</label>
   <label class="tool"><input type="checkbox" id="trkon"><svg class="i" viewBox="0 0 16 16"><path d="M2 13V3M2 13h12M4 10l3-3 2 2 4-5"/></svg>Size</label>
@@ -295,11 +351,22 @@ const msg = t => { $("msg").textContent = t; };
 // -- the harness: the program whose memory this is. Its icon sits beside the brand, in the tab and in the title. The address says
 // which program opened the page (`h`); with none, a server that loaded one harness gives that one (breadcrumbs_spacegraph/harness.py).
 const HARNESS = {key: "", label: "", icon: ""};
+const AGENCY_PAGES = "https://breadcrumbs-agency.github.io/";
+const AGENCY_REPO = "https://github.com/breadcrumbs-agency/breadcrumbs-codex";
+function externalLink(id, url) {
+  const a = $(id);
+  if (!a) return;
+  a.hidden = !url;
+  if (url) a.href = url;
+}
+externalLink("agency-pages", AGENCY_PAGES); externalLink("agency-repo", AGENCY_REPO);
 function showHarness(r) {
   const me = (r.harnesses || []).find(x => x.key === r.here);
   if (!me) return false;
+  const link = (id, url) => { const a = $(id); if (!a) return; a.hidden = !url; if (url) a.href = url; };
   Object.assign(HARNESS, me);
   $("hicon").src = me.icon; $("hname").textContent = me.label;
+  link("hpages", me.pages); link("hrepo", me.repository);
   $("harness").title = me.label + ": the program whose memory this is"; $("harness").hidden = false;
   document.title = "breadcrumbs \u00b7 " + me.label;
   let tab = document.querySelector('link[rel="icon"]');
@@ -307,6 +374,130 @@ function showHarness(r) {
   tab.href = me.icon;
   return true;
 }
+// -- settings: the common dials and the active harness's own controls share one CRUD widget, but never one storage layer.
+let settingsRequest = 0;
+function apiWrite(action, target, key, value) {
+  const body = {action, target, harness: HARNESS.key || ""};
+  if (key) body.key = key;
+  if (value !== undefined) body.value = value;
+  return fetch("api/settings?" + new URLSearchParams({k: KEY, h: HARNESS.key || ""}), {
+    method: action === "delete" ? "DELETE" : "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  }).then(r => r.ok ? r.json() : r.json().then(x => Promise.reject(new Error(x.error || ("settings: HTTP " + r.status)))));
+}
+function settingValue(field, control) {
+  if (field.kind === "bool") return control.checked;
+  if (field.kind === "choice") return control.value;
+  const value = Number(control.value);
+  if (!Number.isFinite(value) || (field.kind === "int" && !Number.isInteger(value))) throw new Error(field.key + " must be a valid " + field.kind);
+  if (field.min != null && value < field.min || field.max != null && value > field.max) throw new Error(field.key + " is outside its allowed range");
+  return value;
+}
+function settingControl(field) {
+  let control;
+  if (field.kind === "choice") {
+    control = document.createElement("select");
+    (field.options || []).forEach(option => {
+      const item = document.createElement("option"); item.value = option.value; item.textContent = option.label || option.value; control.append(item);
+    });
+  } else {
+    control = document.createElement("input");
+    if (field.kind === "bool") control.type = "checkbox";
+    else { control.type = "number"; control.step = field.kind === "float" ? "any" : "1"; if (field.min != null) control.min = field.min; if (field.max != null) control.max = field.max; }
+  }
+  if (field.kind !== "bool") control.value = field.value == null ? "" : field.value;
+  else control.checked = !!field.value;
+  // A number with both bounds is a dial to slide (grow and fold strength): a range input beside the number, kept equal.
+  if (field.kind !== "bool" && field.kind !== "choice" && field.min != null && field.max != null && field.max > field.min) {
+    const slider = document.createElement("input"); slider.type = "range"; slider.className = "dial";
+    slider.min = field.min; slider.max = field.max; slider.step = field.kind === "float" ? (field.max - field.min) / 100 : 1;
+    slider.value = control.value; slider.setAttribute("aria-label", field.key);
+    slider.oninput = () => { control.value = field.kind === "float" ? +(+slider.value).toFixed(3) : slider.value; };
+    control.oninput = () => { slider.value = control.value; };
+    const wrap = document.createElement("div"); wrap.className = "dialbox"; wrap.append(slider, control); control._wrap = wrap;
+  }
+  if (field.kind === "bool") control.classList.add("switch");
+  return control;
+}
+function settingsButton(label, handler, disabled) {
+  const b = document.createElement("button"); b.className = "btn"; b.textContent = label; b.disabled = !!disabled; b.onclick = handler; return b;
+}
+function settingRow(field, target, model) {
+  const row = document.createElement("div"); row.className = "settings-row";
+  const name = document.createElement("span"); name.className = "name"; name.textContent = field.key;
+  const control = settingControl(field);
+  const doc = document.createElement("span"); doc.className = "doc"; doc.textContent = field.doc || "";
+  const source = document.createElement("span"); source.className = "source"; source.textContent = field.source || "default";
+  const save = settingsButton("Save", async () => {
+    try { await apiWrite("set", target, field.key, settingValue(field, control)); await loadSettings(); }
+    catch (e) { setSettingsStatus(e.message, true); }
+  });
+  const revert = settingsButton("Revert", async () => {
+    try { await apiWrite("delete", target, field.key); await loadSettings(); }
+    catch (e) { setSettingsStatus(e.message, true); }
+  }, !field.overridden);
+  row.append(name, control._wrap || control, doc, source, save, revert);
+  return row;
+}
+function settingsGroup(title, fields, target, model) {
+  const group = document.createElement("section"); group.className = "settings-group";
+  const heading = document.createElement("h4"); heading.textContent = title; group.append(heading);
+  if (!fields.length) { const empty = document.createElement("div"); empty.className = "settings-empty"; empty.textContent = "No settings in this group."; group.append(empty); return group; }
+  fields.forEach(field => group.append(settingRow(field, target, model))); return group;
+}
+function setSettingsStatus(text, error = false) {
+  const status = $("settings-status"); status.textContent = text || ""; status.className = "settings-status" + (error ? " settings-error" : "");
+}
+function renderSettings(answer) {
+  const common = answer.common || {}, model = common.model || "";
+  const commonBox = $("settings-common"); commonBox.replaceChildren();
+  const title = document.createElement("div"); title.className = "settings-note";
+  title.textContent = "Common dials · " + (common.path || "breadcrumbs/config.json") + (model ? " · model " + model : " · profile-wide"); commonBox.append(title);
+  (common.groups || []).forEach(group => commonBox.append(settingsGroup(group.name, group.rows || [], "common", model)));
+
+  const harnessBox = $("settings-harness"); harnessBox.replaceChildren();
+  const harness = answer.harness;
+  if (!harness) { harnessBox.hidden = true; return; }
+  harnessBox.hidden = false;
+  const heading = document.createElement("h4"); heading.textContent = (harness.label || "Harness") + " settings"; harnessBox.append(heading);
+  const note = document.createElement("div"); note.className = "settings-note"; note.textContent = (harness.description || "") + (harness.enabled ? " Profile enabled." : " Profile not enabled; changes are saved for the next enable."); harnessBox.append(note);
+  const reset = settingsButton("Revert all harness settings", async () => {
+    try { await apiWrite("reset", "harness"); await loadSettings(); }
+    catch (e) { setSettingsStatus(e.message, true); }
+  }, !(harness.fields || []).some(field => field.overridden));
+  harnessBox.append(reset);
+  (harness.fields || []).forEach(field => harnessBox.append(settingRow(field, "harness", "")));
+}
+async function loadSettings() {
+  const request = ++settingsRequest;
+  setSettingsStatus("Loading settings…");
+  try {
+    const r = await api("settings", {harness: HARNESS.key || "", model: $("settings-model").value.trim()});
+    if (request !== settingsRequest) return;
+    renderSettings(r); setSettingsStatus("Settings loaded.");
+  } catch (e) { if (request === settingsRequest) setSettingsStatus(e.message, true); }
+}
+function toggleSettings() {
+  const panel = $("settings-panel");
+  if (!panel.hidden) { panel.hidden = true; return; }
+  $("evidence").hidden = true; panel.hidden = false; loadSettings();
+}
+$("brandmark").addEventListener("click", toggleSettings);
+$("settings-close").addEventListener("click", () => { $("settings-panel").hidden = true; });
+$("settings-reload").addEventListener("click", loadSettings);
+$("settings-model").addEventListener("change", loadSettings);
+$("settings-reset").addEventListener("click", async () => {
+  try { await apiWrite("reset", "common", null, undefined); await loadSettings(); }
+  catch (e) { setSettingsStatus(e.message, true); }
+});
+$("settings-reset-all").addEventListener("click", async () => {
+  try {
+    const body = {action: "reset", target: "common", all_models: true, harness: HARNESS.key || ""};
+    await fetch("api/settings?" + new URLSearchParams({k: KEY, h: HARNESS.key || ""}), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).then(r => r.ok ? r.json() : Promise.reject(new Error("settings reset failed: HTTP " + r.status)));
+    await loadSettings();
+  } catch (e) { setSettingsStatus(e.message, true); }
+});
 // -- the evidence QR: a click on the harness box shows where this view reads from (store, scope, profile, folder, chat, writer
 // pid, sizes of the last request) as QR codes, because a program that reads the screen can decode them. A long line is
 // chained: the codes are numbered "i/n|". The line holds no crumb text and no token (view.evidence).
@@ -329,11 +520,14 @@ async function showEvidence() {
     f.append(drawCode(rows)); cap.textContent = r.parts.length > 1 ? (i + 1) + " / " + r.parts.length : "where this view reads";
     f.append(cap); codes.append(f);
   });
-  const p = document.createElement("p"); p.textContent = r.text.slice(r.text.indexOf(" ") + 1);
-  box.append(codes, p); box.hidden = false;
+  const p = document.createElement("p"); p.textContent = r.text.slice(0, r.text.indexOf(" ")) + " · QR payload above; JSON metadata below";
+  const meta = document.createElement("pre"); meta.className = "evidence-json";
+  meta.textContent = JSON.stringify(r.json || {}, null, 0);
+  box.append(codes, p, meta); box.hidden = false;
 }
 $("harness").addEventListener("click", showEvidence);
-document.addEventListener("keydown", e => { if (e.key === "Escape") $("evidence").hidden = true; });
+for (const id of ["hpages", "hrepo"]) $(id).addEventListener("click", e => e.stopPropagation());
+document.addEventListener("keydown", e => { if (e.key === "Escape") { $("evidence").hidden = true; $("settings-panel").hidden = true; } });
 api("harness", {h: HASH.get("h") || ARG.get("h") || ""}).then(showHarness).catch(() => {});  // an older server has no route: the brand stands alone
 
 // -- the graph: a node is a crumb at one place; a part's key is its parent's key + ">" + its slot --

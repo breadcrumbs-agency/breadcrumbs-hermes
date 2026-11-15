@@ -20,7 +20,7 @@ Common holds no list of them. An adapter calls these functions:
                              the usage of its requests, and its icon: the viewers draw it beside the brand)
     image(file, name)        the data: URI of an image file that lies beside `file` (an adapter gives its icon by it)
     mcp_add(cli)             the setup function of a program that adds a server by "<cli> mcp add NAME -- COMMAND..."
-    harnesses()              core asks for the table
+    harnesses()              core asks for the table (including optional settings, repository and Pages links)
     folders(), pythonpath()  the folders that hold the packages, for a child process that must find the same code
 
 The ports, each a function (the adapter of hermes gives them; the adapter of spacegraph gives none):
@@ -34,6 +34,7 @@ The ports, each a function (the adapter of hermes gives them; the adapter of spa
     blocked(home)              why no view of that profile opens, or "" when one may
     price(model, provider)     (input, cache read, cache write) in USD per 1M tokens, or tiers (costs.pick), or None (breadcrumbs/usage.py)
     ace_join(lines, requests)  [(ace.log line, the main request that it shaped)] (breadcrumbs/usage.py AFTER)
+    settings(root, action, payload)  optional harness-specific settings CRUD for the common explorer widget
 
 A layer that is not there gives nothing: get() is then None, and the caller answers as it does for a store that no
 harness wrote. Nothing here names a layer: load() imports what it finds, at the first ask.
@@ -77,7 +78,8 @@ def command(name, add, run, after=None, before=None, hidden=False):
     _commands.append({"name": name, "add": add, "run": run, "after": after, "before": before, "hidden": hidden})
 
 
-def harness(key, label, match, setup, order, source=None, usage=None, icon=None):
+def harness(key, label, match, setup, order, source=None, usage=None, icon=None, settings=None,
+            repository=None, pages=None):
     """Give a harness to the table of core.py. match: the words of a client's self-name (MCP clientInfo.name, the A2A
     header) that name this harness, in lower case. setup(cmd) -> the text that adds the server command `cmd` (a list)
     to the harness. order: the place in the table. identify asks in this order and `core setup` prints in it, so the
@@ -87,9 +89,10 @@ def harness(key, label, match, setup, order, source=None, usage=None, icon=None)
     source. usage(path) -> an iterator of the usage records of the model requests in the same place (breadcrumbs/usage.py
     record()); `ingest` adds them to usage.log of the store home. None: the harness gives no usage. icon: the mark of
     the program as a data: URI of an image (image(__file__, "icon.png")); the viewers draw it beside the brand, so a
-    viewer says which harness it shows. None: the viewers draw the first letter of the label in its place."""
+    viewer says which harness it shows. None: the viewers draw the first letter of the label in its place. settings is
+    an optional CRUD callback for harness-specific settings; repository and pages are optional project URLs."""
     _harnesses[key] = {"label": label, "match": tuple(match), "setup": setup, "order": order, "source": source,
-                       "usage": usage, "icon": icon}
+                       "usage": usage, "icon": icon, "settings": settings, "repository": repository, "pages": pages}
 
 
 def image(file, name):
@@ -144,7 +147,7 @@ def commands():
 
 
 def harnesses():
-    """The harness table: {key: {"label", "match", "setup", "order", "source", "usage", "icon"}}, in the order of the entries."""
+    """The harness table, including optional settings/repository/pages metadata, in entry order."""
     load()
     return dict(sorted(_harnesses.items(), key=lambda kv: (kv[1]["order"], kv[0])))
 
