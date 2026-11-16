@@ -117,3 +117,129 @@ class VizSeesTheWholeProfile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutostartHook(unittest.TestCase):
+    """The session-start hook of the Hermes part: a chat in a terminal opens the explorer once per process, of the store
+    that /viz would open. The terminals themselves (cmux, tmux, WezTerm, Kitty) are tested in breadcrumbs-common."""
+
+    def setUp(self):
+        import tempfile
+
+        from breadcrumbs_hermes import workdir
+        self.workdir = workdir
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = os.path.join(self.tmp.name, "profiles", "alpha")
+        self.base = os.path.join(self.home, "breadcrumbs")
+        os.makedirs(self.base)
+        self.scope_store = os.path.join(self.base, "scopes", "app-1234abcd")
+        patch = mock.patch.object(workdir, "_viz_started", False)
+        patch.start()
+        self.addCleanup(patch.stop)
+        patch = mock.patch.object(workdir, "current_home", return_value=self.home)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def hook(self):
+        got = {}
+
+        class Ctx:
+            def register_command(self, name, fn, **kw):
+                pass
+
+            def register_hook(self, name, fn):
+                got[name] = fn
+
+        info = {"store": self.scope_store, "cwd": "/w/app", "root": "/w/app", "kind": "git", "on": True}
+        self.workdir.register(Ctx(), mock.Mock(scope_info=info, spec=["scope_info"]))
+        return got["on_session_start"]
+
+    def start(self, platform="cli", session_id="s1"):
+        """Call the hook; the thread it starts is waited for. The autostart calls are the result."""
+        calls = []
+        threads = []
+        real = self.workdir.start_viz
+
+        def watch(store, harness=self.workdir.HARNESS):
+            t = real(store, harness)
+            threads.append(t)
+            return t
+
+        with mock.patch.object(viz, "autostart", lambda home, **kw: calls.append((home, kw))), \
+                mock.patch.object(self.workdir, "start_viz", watch):
+            self.hook()(session_id=session_id, platform=platform)
+            for t in threads:
+                if t:
+                    t.join(5)
+        return calls
+
+    def test_the_hook_is_registered_and_a_hermes_without_hooks_still_registers_the_commands(self):
+        self.assertTrue(callable(self.hook()))
+        cmds = {}
+
+        class NoHooks:
+            def register_command(self, name, fn, **kw):
+                cmds[name] = fn
+
+        self.workdir.register(NoHooks(), None)
+        self.assertEqual(sorted(cmds), ["scope", "viz"])
+
+    def test_a_terminal_chat_opens_the_explorer_of_the_whole_profile(self):
+        for platform in ("cli", "tui"):
+            with self.subTest(platform=platform), mock.patch.object(self.workdir, "_viz_started", False):
+                self.assertEqual(self.start(platform), [(self.base, {"harness": "hermes"})])
+
+    def test_once_per_process(self):
+        self.assertEqual(len(self.start()), 1)
+        self.assertEqual(self.start(session_id="s2"), [])
+
+    def test_only_a_chat_in_a_terminal_starts_it(self):
+        for platform in ("telegram", "discord", "desktop", "acp", "local", "", None):
+            self.assertEqual(self.start(platform), [], platform)
+        self.assertFalse(self.workdir._viz_started)  # a gateway chat first does not use up the one start
+
+    def test_scope_narrows_it_as_it_narrows_slash_viz(self):
+        import json
+        with open(os.path.join(self.base, "config.json"), "w") as f:
+            json.dump({"viz": "scope"}, f)
+        self.assertEqual(self.start(), [(self.scope_store, {"harness": "hermes"})])
+
+    def test_a_no_vis_profile_opens_nothing(self):
+        with mock.patch.object(self.workdir.novis, "blocked", return_value="profile `alpha` is tagged no-vis"):
+            self.assertEqual(self.start(), [])
+        self.assertFalse(self.workdir._viz_started)
+
+    def test_a_failure_never_stops_the_chat(self):
+        with mock.patch.object(viz, "autostart", side_effect=LookupError("the explorer is not installed")):
+            thread = self.workdir.start_viz(self.base)
+            thread.join(5)
+        self.assertFalse(thread.is_alive())
+
+    @unittest.skipUnless(__import__("shutil").which("tmux"), "tmux is not installed")
+    def test_in_a_real_tmux_the_chat_gets_a_second_pane(self):
+        """Hermes path, real split: a private tmux server, the hook, and viz.autostart unmocked. The pane runs a stand-in for
+        `term` (a sleep), because term needs a terminal that reads the Kitty graphics protocol."""
+        import subprocess
+
+        sock = "bchook-%d" % os.getpid()
+
+        def tmux(*argv):
+            return subprocess.run(["tmux", "-L", sock] + list(argv), capture_output=True, text=True, timeout=20)
+
+        if tmux("new-session", "-d", "-x", "200", "-y", "50", "-s", "t", "sleep 60").returncode != 0:
+            self.skipTest("tmux cannot start a server here")
+        self.addCleanup(tmux, "kill-server")
+        info = tmux("display-message", "-p", "-t", "t", "#{socket_path},#{pid},0|#{pane_id}").stdout.strip()
+        tmux_env, pane = info.split("|")
+        env = {"TMUX": tmux_env, "TMUX_PANE": pane, "PATH": os.environ.get("PATH", "")}
+        threads = []
+        real = self.workdir.start_viz
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(viz, "_term_argv", return_value=lambda home, harness=None: ["sleep", "61"]), \
+                mock.patch.object(self.workdir, "start_viz", lambda *a, **k: threads.append(real(*a, **k)) or threads[-1]):
+            self.hook()(session_id="s1", platform="cli")
+            threads[0].join(10)
+        panes = [p for p in tmux("list-panes", "-t", "t", "-F", "#{pane_id} #{pane_current_command}").stdout.split("\n") if p]
+        self.assertEqual(len(panes), 2, panes)
+        self.assertEqual(tmux("display-message", "-p", "-t", "t", "#{pane_id}").stdout.strip(), pane)  # the chat keeps the focus

@@ -16,9 +16,10 @@ from breadcrumbs import cli
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The hooks that register() adds, in order: the two of the usage log (usage_log.register), then the one of the dial
-# family (hermes.register_handles). plugin.yaml lists the same three in provides_hooks.
-HOOKS = ["post_api_request", "post_auxiliary_call", "transform_tool_result"]
+# The hooks that register() adds, in order: the session start of /viz (workdir.register: a terminal chat opens the
+# explorer), the two of the usage log (usage_log.register), then the one of the dial family (hermes.register_handles).
+# plugin.yaml lists the same four in provides_hooks.
+HOOKS = ["on_session_start", "post_api_request", "post_auxiliary_call", "transform_tool_result"]
 
 
 class Ctx:
@@ -152,7 +153,7 @@ class RootPluginTest(unittest.TestCase):
         load_root().register(ctx)
         self.assertEqual(ctx.hooks, HOOKS)
 
-    def test_the_root_registers_the_scope_and_viz_commands_and_no_profile_command(self):
+    def test_the_root_registers_the_scope_and_viz_commands_the_start_hook_and_no_profile_command(self):
         ctx = CommandCtx()
         load_root().register(ctx)
         self.assertEqual(ctx.commands, ["scope", "viz"])  # /scope: where the chat's memory is; /viz: the explorer

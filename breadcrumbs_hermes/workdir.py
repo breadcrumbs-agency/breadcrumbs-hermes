@@ -12,6 +12,10 @@ default memory too.
     /scope up           the same, and how to read further than this scope (crumb_find scope "up" or "all")
     /viz                the explorer of the whole profile: every Hermes chat of its state.db (imported first) and every scope
                         (read-only, on this machine). "viz": "scope" in config.json narrows it to this chat's scope.
+    session start       a chat in a terminal (the CLI or the TUI) opens the same explorer once per process, beside the chat:
+                        a browser split in cmux, a pane that runs `term` in tmux, WezTerm or Kitty, else the OS browser
+                        (breadcrumbs/viz.py names the terminal; `python -m breadcrumbs viz --where` shows what it found).
+                        BREADCRUMBS_VIZ=0 turns it off. A no-vis profile or session opens nothing.
 
 Off: BREADCRUMBS_SCOPE=off, or "scope": "off" in config.json. Then every chat uses the profile's default memory.
 
@@ -20,11 +24,15 @@ Not profiles: nothing here creates, clones or switches a Hermes profile, starts 
 import io
 import logging
 import os
+import threading
 from typing import List, Optional, Tuple
 
 from breadcrumbs import scope
 
+from . import novis
+
 LOCAL_SURFACES = ("cli", "tui", "desktop", "acp", "local")
+TERMINAL_SURFACES = ("cli", "tui")  # the chats that run in a terminal window: only these open the explorer by themselves
 VIZ_HELP = ("open the explorer of this profile: every Hermes chat and every scope, imported from state.db first "
             "(the map, graph, Gantt and Venn; read-only)")
 VIZ_DISCLAIMER = ("`/viz` is not for messaging chats (%s). It opens a page on the machine that runs Hermes. "
@@ -234,8 +242,6 @@ def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> 
     tagged no-vis opens nothing."""
     from breadcrumbs import viz
 
-    from . import novis
-
     why = novis.blocked(current_home(), session_id, hermes)
     if why:
         return "breadcrumbs: the explorer did not open: %s." % why
@@ -248,11 +254,37 @@ def open_viz(store: str, session_id: str = "", hermes: Optional[str] = None) -> 
     return "breadcrumbs: the explorer of %s is open in %s (read-only, on this machine)." % (scope.short(store), where)
 
 
+_viz_started = False  # the explorer opens once per process, at the first terminal chat
+
+
+def start_viz(store: str, harness: str = HARNESS) -> Optional[threading.Thread]:
+    """A chat starts in a terminal: open the explorer of `store` once per process (viz.autostart: a split in cmux, tmux,
+    WezTerm or Kitty, else the OS opens the page). It runs in a thread, because the first server start can take seconds,
+    and it never raises. Returns the thread, or None when this process opened it already. No import of state.db here:
+    that writes the store, and a session start must not write beside the provider; `/viz` imports first."""
+    global _viz_started
+    if _viz_started:
+        return None
+    _viz_started = True
+
+    def work():
+        try:
+            from breadcrumbs import viz
+
+            viz.autostart(store, harness=harness)
+        except Exception:
+            logging.getLogger(__name__).debug("breadcrumbs viz: autostart failed", exc_info=True)
+
+    thread = threading.Thread(target=work, name="breadcrumbs-viz", daemon=True)
+    thread.start()
+    return thread
+
+
 # -- the entry point ---------------------------------------------------------------------------------------------
 def register(ctx, provider=None):
-    """/scope and /viz, each where the Hermes context has register_command. No hook, no CLI command, no profile."""
-    if not hasattr(ctx, "register_command"):
-        return
+    """/scope and /viz where the Hermes context has register_command, and the session-start hook where it has
+    register_hook (each on its own: a Hermes with hooks and no commands still opens the explorer). No CLI command, no
+    profile."""
 
     def base_and_info():
         base = os.path.join(current_home(), "breadcrumbs")
@@ -271,6 +303,22 @@ def register(ctx, provider=None):
         import_history(current_home(), provider)
         return open_viz(viz_store(base, info), session_id)
 
-    ctx.register_command("scope", scope_command, description=SCOPE_HELP, args_hint="[up]")
-    ctx.register_command("viz", viz_command, description=VIZ_HELP)
-    logging.getLogger(__name__).debug("breadcrumbs: /scope and /viz registered")
+    def on_session_start(session_id: str = "", platform: str = "", **_) -> None:
+        """Hermes calls this once before the first reply of a chat. A chat in a terminal opens the explorer."""
+        if platform not in TERMINAL_SURFACES or _viz_started:
+            return None
+        try:
+            if novis.blocked(current_home(), session_id):
+                return None
+            base, info = base_and_info()
+            start_viz(viz_store(base, info))
+        except Exception:  # a hook never stops a chat from starting
+            logging.getLogger(__name__).debug("breadcrumbs viz: session start", exc_info=True)
+        return None
+
+    if hasattr(ctx, "register_command"):
+        ctx.register_command("scope", scope_command, description=SCOPE_HELP, args_hint="[up]")
+        ctx.register_command("viz", viz_command, description=VIZ_HELP)
+    if hasattr(ctx, "register_hook"):
+        ctx.register_hook("on_session_start", on_session_start)
+    logging.getLogger(__name__).debug("breadcrumbs: /scope, /viz and the session-start explorer registered")

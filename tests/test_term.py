@@ -48,9 +48,12 @@ class Image(unittest.TestCase):
 
     def test_supported_terminals(self):
         for env in ({"TERM": "xterm-kitty"}, {"TERM": "xterm-ghostty"}, {"TERM_PROGRAM": "ghostty"},
-                    {"KITTY_WINDOW_ID": "3", "TERM": "screen"}):
+                    {"KITTY_WINDOW_ID": "3", "TERM": "screen"}, {"TERM_PROGRAM": "WezTerm", "TERM": "xterm-256color"},
+                    {"WEZTERM_PANE": "2", "TERM": "tmux-256color", "TERM_PROGRAM": "tmux"},  # a tmux server started in WezTerm
+                    {"GHOSTTY_RESOURCES_DIR": "/Applications/Ghostty.app/Contents/Resources/ghostty", "TERM": "tmux-256color"}):
             self.assertTrue(kitty.supported(env), env)
-        for env in ({"TERM": "xterm-256color", "TERM_PROGRAM": "Apple_Terminal"}, {"TERM": "dumb"}, {}):
+        for env in ({"TERM": "xterm-256color", "TERM_PROGRAM": "Apple_Terminal"}, {"TERM": "dumb"}, {},
+                    {"TERM_PROGRAM": "iTerm.app", "TERM": "xterm-256color"}, {"TERM_PROGRAM": "vscode"}, {"ZELLIJ": "0"}):
             self.assertFalse(kitty.supported(env), env)
 
 
