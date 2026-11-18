@@ -78,7 +78,7 @@ class FakeSlot:
 
 
 STATUS = ("fake", 2)  # the slot's own recall line (any object: breadcrumbs passes it as it is)
-ACE_ON = "context:\n  engine: breadcrumbs\n"  # config.yaml that selects breadcrumbs' context engine
+ACE_ON = "context:\n  engine: breadcrumbs\nmemory:\n  provider: breadcrumbs\n"  # config.yaml that selects breadcrumbs' context engine (and, as ACE needs, its memory provider)
 # A census of Nov 8 2026, read with ast only: the methods of Hermes's MemoryProvider base class, and the hooks
 # that 70 memory providers of the Hermes catalog define.
 CENSUS_ABC = ["name", "is_available", "initialize", "unavailable_reason", "system_prompt_block", "prefetch",
