@@ -192,7 +192,7 @@ python3 -m breadcrumbs --home ~/.hermes/breadcrumbs ingest-hermes default       
 hermes plugins install breadcrumbs-agency/breadcrumbs-hermes-release --yes-deps --enable \
   --ref "$(git ls-remote https://github.com/breadcrumbs-agency/breadcrumbs-hermes-release refs/heads/master | cut -f1)"
 hermes config set memory.provider breadcrumbs       # undo: hermes memory off
-hermes config set context.engine breadcrumbs        # ACE, the folding; without it only the memory runs. Undo: ... context.engine compressor
+hermes config set context.engine breadcrumbs        # ACE, the folding; off by default, and it runs only with memory.provider breadcrumbs too. Undo: ... context.engine compressor
 ```
 
 This repository is the source of this part and does not run alone (it needs its two layers). The plugin is the
@@ -211,7 +211,7 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
 - **A memory provider.** Recall before each turn, inside a steady-state budget: it holds context overflows at 2%
   to 5% of turns. The tools `crumb` and `crumb_find`. A receipt for each read. Tool calls and their results
   become linked `step` and `tool` crumbs.
-- **A context engine** (ACE): `hermes config set context.engine breadcrumbs`.
+- **A context engine** (ACE): `hermes config set context.engine breadcrumbs`. Off by default: it registers only when `memory.provider` is also `breadcrumbs`; otherwise Hermes's own compaction runs.
 - **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
   hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
 - **`/viz`**: a slash command that opens the explorer of the whole profile, with no command line: it first imports the profile's `state.db` (read-only, idempotent) so every Hermes chat shows, not only the chats that this plugin has seen, then opens the base store with all of its scopes. Hermes is not a secure portal and its names are not stable, so the explorer sees what the profile holds; the viewers' disclosure level and `novis` decide what it shows. `"viz": "scope"` in `config.json` narrows it to the memory of the chat's scope.
@@ -355,8 +355,17 @@ three files at once), with 9 folds, 0 API errors and an exact answer. Each reque
 `$HERMES_HOME/breadcrumbs/ace.log`.
 
 ```sh
+hermes -p <profile> config set memory.provider breadcrumbs  # first: the provider gives the crumb tool
 hermes -p <profile> config set context.engine breadcrumbs   # back: ... context.engine compressor
 ```
+
+Without `memory.provider breadcrumbs`, ACE does not register, and Hermes's own compaction stays in charge.
+
+When the plugin loads in a profile with `context.engine breadcrumbs` and no way to open the folds, it fixes the
+setting itself, through Hermes's own config writer, and logs the fix to `<profile>/breadcrumbs/heal.log`:
+`memory.provider` empty becomes `breadcrumbs`; another provider sends `context.engine` back to `compressor`. Hermes had
+read its settings before the plugin loaded, so ACE starts with the next chat. `BREADCRUMBS_NO_HEAL=1` turns this off.
+`python -m breadcrumbs compaction status|on|off` shows and sets the same thing for every profile.
 
 Hermes then sends each request through the breadcrumbs context engine. When a request passes 200k
 tokens, the older turns fold into a layer of crumbs, each at a level from 0 to 1, and the newest turns

@@ -259,7 +259,7 @@ class InstallShimTest(unittest.TestCase):
             with open(path) as f:
                 src = f.read()
             with open(os.path.join(home, "config.yaml"), "w") as f:
-                f.write("context:\n  engine: bcdev2\n")
+                f.write("context:\n  engine: bcdev2\nmemory:\n  provider: bcdev2\n")
             engines = []
 
             class EngineCtx(Ctx):

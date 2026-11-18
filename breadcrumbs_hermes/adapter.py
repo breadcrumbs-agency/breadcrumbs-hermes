@@ -330,6 +330,18 @@ def _slot(args, home):
     return slot_command(args)
 
 
+def _add_compaction(sub):
+    p = sub.add_parser("compaction", help="which profiles compact with ACE or with Hermes (status, on, off)")
+    p.add_argument("action", nargs="?", choices=("status", "on", "off"), default="status")
+    p.add_argument("profiles", nargs="*", help="profile names (default: every profile; `on` needs one or --all)")
+    p.add_argument("--all", action="store_true", help="every profile")
+
+
+def _compaction(args, home):
+    from . import compaction
+    return compaction.command(args.action, args.profiles, args.all)
+
+
 def _add_install(sub):
     p = sub.add_parser("install-hermes"); p.add_argument("profile")
     p.add_argument("--name", default="breadcrumbs", help="provider and plugin dir name")
@@ -394,6 +406,7 @@ if ports.layer("hermes", __file__):
     ports.command("ace", _add_ace, _ace, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
     ports.command("slot", _add_slot, _slot, after="vault")
+    ports.command("compaction", _add_compaction, _compaction, after="vault")
     ports.command("install-hermes", _add_install, _install, after="vault")
     ports.command("scopes", _add_scopes, _scopes, after="vault")
     ports.command("seats", _add_seats, _seats, before="hive")

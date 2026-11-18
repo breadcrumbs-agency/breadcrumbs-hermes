@@ -306,7 +306,7 @@ class EngineTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         with open(os.path.join(tmp.name, "config.yaml"), "w") as f:
-            f.write("context:\n  engine: bcdev2\n")
+            f.write("context:\n  engine: bcdev2\nmemory:\n  provider: bcdev2\n")
         self.assertTrue(ace.wanted(tmp.name, name="bcdev2"))
         self.assertFalse(ace.wanted(tmp.name))
         e = ace.Ace(name="bcdev2")
@@ -372,6 +372,27 @@ class PluginTest(unittest.TestCase):
     def test_a_profile_that_selects_it_gets_the_engine_next_to_the_provider(self):
         got = self.load("model: x\ncontext:\n  engine: breadcrumbs\n  other: 1\nmemory:\n  provider: breadcrumbs\n")
         self.assertEqual(got, {"memory": "breadcrumbs", "engine": "breadcrumbs"})
+
+    def test_the_engine_alone_does_not_compact_without_the_memory_provider(self):
+        # context.engine without memory.provider: no crumb tool to open the handles, so the default (no ACE) holds.
+        self.assertEqual(self.load("context:\n  engine: breadcrumbs\n"), {"memory": "breadcrumbs"})
+        self.assertEqual(self.load("context:\n  engine: breadcrumbs\nmemory:\n  provider: other\n"),
+                         {"memory": "breadcrumbs"})
+        self.assertEqual(self.load("memory:\n  provider: breadcrumbs\n"), {"memory": "breadcrumbs"})
+        self.assertEqual(self.load(""), {"memory": "breadcrumbs"})
+
+    def test_loading_a_profile_that_selects_the_engine_alone_fixes_it_for_the_next_chat(self):
+        import sys
+        import types
+        from unittest import mock
+        sets = []
+        # the plugin loads as its own package, so its compaction module is a copy: fake Hermes's writer instead
+        fake = types.ModuleType("hermes_cli.config")
+        fake.set_config_value = lambda k, v: sets.append((k, v))
+        with mock.patch.dict(sys.modules, {"hermes_cli": types.ModuleType("hermes_cli"), "hermes_cli.config": fake}):
+            got = self.load("context:\n  engine: breadcrumbs\n")
+        self.assertEqual(sets, [("memory.provider", "breadcrumbs")])
+        self.assertEqual(got, {"memory": "breadcrumbs"})  # no ACE in this process: Hermes read its settings before
 
     def test_another_engine_keeps_its_seat(self):
         got = self.load("context:\n  engine: lcm\n")

@@ -39,8 +39,9 @@ alone do not fit, the oldest groups fold into one crumb each. ACE folds again on
 passes the target again, so between folds the layer bytes stay the same and the prompt cache holds.
 compress() makes the same fold on the stored history, with no model call.
 
-Turn it on for a profile: hermes -p PROFILE config set context.engine breadcrumbs
-(memory.provider breadcrumbs gives the crumb tool that opens the handles).
+Turn it on for a profile: hermes -p PROFILE config set memory.provider breadcrumbs, then
+hermes -p PROFILE config set context.engine breadcrumbs (the provider gives the crumb tool that opens the handles).
+With either setting missing, ACE does not register and the profile keeps Hermes's own compaction (wanted).
 """
 
 import os
@@ -101,10 +102,13 @@ def setting(home, block, key):
 
 
 def wanted(home=None, name="breadcrumbs"):
-    """True when the profile's config.yaml selects this engine (context.engine: the name of the plugin
-    that holds it). Hermes runs one context-engine plugin per process, so an unselected ACE must not take
-    the seat."""
-    return setting(home or _home(), "context", "engine") == name
+    """True only when the profile's config.yaml selects this engine (context.engine: the name of the plugin
+    that holds it) AND the same plugin is its memory provider (memory.provider). The layer tells the model to open
+    handles with crumb(ref, level), and only the memory provider gives that tool, so ACE with no provider would
+    hide text that the model cannot open. Default: no compaction by this plugin (Hermes's own compressor stays).
+    Hermes runs one context-engine plugin per process, so an unselected ACE must not take the seat."""
+    home = home or _home()
+    return setting(home, "context", "engine") == name and setting(home, "memory", "provider") == name
 
 
 def _home():
