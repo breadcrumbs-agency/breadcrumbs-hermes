@@ -117,13 +117,13 @@ class MiddlewareTest(unittest.TestCase):
 
     def test_the_model_dictionary_reaches_the_request_by_provider_and_family(self):
         write_config(self.tmp.name, {"catalog": {"entries": {
-            "openrouter/vendor/model-x-1.5": {"settings": {"temperature": 0.2}},
-            "custom/model-x-1-5": {"settings": {"temperature": 0.9, "top_k": 20}}}}})
+            "openrouter/vendor/model-x-1.5": {"settings": {"temperature": 0.2}, "since": "2026-11-18"},
+            "custom/model-x-1-5": {"settings": {"temperature": 0.9, "top_k": 20}, "since": "2026-11-10"}}}})
         # the vendor of an entry is the provider of the request; its own entry wins over its family
         self.assertEqual(self.send("vendor/model-x-1.5", provider="openrouter")["temperature"], 0.2)
         kw = self.send("model-x-1-5", provider="custom")
         self.assertEqual((kw["temperature"], kw["extra_body"]), (0.9, {"top_k": 20}))
-        # a provider with no entry reads its family; when two members set one value, the last by id wins
+        # a provider with no entry reads its family; when two members set one value, the newer implementation wins
         self.assertEqual(self.send("model-x-1.5", provider="other")["temperature"], 0.2)
 
     def test_an_edit_applies_to_the_next_request_and_a_bad_file_changes_nothing(self):

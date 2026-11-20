@@ -414,11 +414,13 @@ takes the value of a linked entry. A **family** is a live bond that is made for 
 the route is taken off (a slug prefix, a bedrock region, a date, `-latest`, `:free`, `5.5` for `5-5`) share, so
 `openrouter/anthropic/claude-haiku-5.5` reads the settings of `anthropic/claude-haiku-5-5` with no entry of its
 own; `models unlink` stops that for a pair. A request reads family, then links, then its own entry, after the
-built-in entries and before the `"models"` globs. The request options reach the wire by the provider of the request.
+built-in entries and before the `"models"` globs. Within a layer the entries read oldest to newest, so the newest
+implementation of a family is its master: an entry dates from its `--since` (`models since ID 2026-11-15`) or else from
+the last change of its settings. The request options reach the wire by the provider of the request.
 
 ```sh
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models add anthropic/claude-haiku-5-5 ace_tokens=90000 temperature=0.7
-python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models list | show ID | set ID K=V | unset ID K | note ID TEXT | rm ID
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models list | show ID | set ID K=V | unset ID K | note ID TEXT | since ID DATE | rm ID
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models clone SRC DST [--link] [--force] | link A B | unlink A B | relate A B
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models seen      # models that ran (usage.log) with no entry, and what they read
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models suggest   # pairs that share by family, and near names to link
