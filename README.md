@@ -185,15 +185,43 @@ python3 -m breadcrumbs --home /tmp/bc-demo/breadcrumbs serve --open             
 python3 -m breadcrumbs --home ~/.hermes/breadcrumbs ingest-hermes default       # then: ... --home ~/.hermes/breadcrumbs serve --open
 ```
 
-## Install
+## Quickstart
+
+The install is self-running: run these blocks in order (or hand this section to an agent). Step 1 places the plugin
+in the Hermes prefix, `plugins/breadcrumbs`. Step 2 is optional and links that one copy into every profile.
 
 ```sh
+# the prefix: the root of Hermes's files (~/.hermes holds the default profile; the others are under profiles/).
+# HERMES_HOME is the home of the running profile, so inside a non-default profile it is not the root.
+HERMES_ROOT="${HERMES_ROOT:-$HOME/.hermes}"
 # breadcrumbs-hermes-release is the plugin: this part with breadcrumbs-common and breadcrumbs-spacegraph under lib/
-hermes plugins install breadcrumbs-agency/breadcrumbs-hermes-release --yes-deps --enable \
-  --ref "$(git ls-remote https://github.com/breadcrumbs-agency/breadcrumbs-hermes-release refs/heads/master | cut -f1)"
-hermes config set memory.provider breadcrumbs       # undo: hermes memory off
-hermes config set context.engine breadcrumbs        # ACE, the folding; off by default, and it runs only with memory.provider breadcrumbs too. Undo: ... context.engine compressor
+REPO=breadcrumbs-agency/breadcrumbs-hermes-release
+LATEST=$(git ls-remote "https://github.com/$REPO" refs/heads/master | cut -f1)   # LATEST is the one exact commit that Hermes installs: the head of master
+
+# 1. place the plugin in the prefix, run through Hermes's installer (lands in $HERMES_ROOT/plugins/breadcrumbs)
+HERMES_HOME="$HERMES_ROOT" hermes plugins install "$REPO" --ref "$LATEST" --yes-deps --enable
+HERMES_HOME="$HERMES_ROOT" hermes config set memory.provider breadcrumbs       # undo: hermes memory off
+HERMES_HOME="$HERMES_ROOT" hermes config set context.engine breadcrumbs        # ACE, the folding; off by default, and it runs only with memory.provider breadcrumbs too. Undo: ... context.engine compressor
 ```
+
+Optional, step 2: link the prefix copy into every profile, so one update of the prefix reaches all of them. A profile
+that already has a `plugins/breadcrumbs` (a folder, a link, or a `plugins` folder that is itself a link) is left
+alone. Code is shared, memory is not: each profile keeps its own `breadcrumbs/` folder.
+
+```sh
+for home in "$HERMES_ROOT"/profiles/*/; do
+  home=${home%/}; name=$(basename "$home")
+  if [ -e "$home/plugins/breadcrumbs" ] || [ -L "$home/plugins/breadcrumbs" ]; then echo "$name: has it, left alone"; continue; fi
+  mkdir -p "$home/plugins" && ln -s "$HERMES_ROOT/plugins/breadcrumbs" "$home/plugins/breadcrumbs"
+  HERMES_HOME="$home" hermes plugins enable breadcrumbs >/dev/null 2>&1 || echo "$name: enable it with: hermes -p $name plugins enable breadcrumbs"
+  HERMES_HOME="$home" hermes config set memory.provider breadcrumbs >/dev/null
+  echo "$name: linked"
+done
+# take a profile out again (the prefix copy stays): rm "$HERMES_ROOT/profiles/NAME/plugins/breadcrumbs"
+```
+
+Latest: set `LATEST` again as above and run step 1's install line with `--force`; linked profiles follow at their next chat.
+`cat "$HERMES_ROOT/plugins/breadcrumbs/BUNDLE.json"` names the three commits of the copy.
 
 This repository is the source of this part and does not run alone (it needs its two layers). The plugin is the
 repository `breadcrumbs-hermes-release`, built from the three parts by `breadcrumbs/tools/bundle.py` (`BUNDLE.json`
