@@ -7,6 +7,7 @@ registration happen once, whichever import comes first.
                price  (the rates of a model, for the cache metrics: breadcrumbs/usage.py)
                ace_join  (each ace.log line with the request that it shaped: ace.join)
                config_layers  (the config files of each profile and scope, for the explorer's settings: config_layers.py)
+               groups         (the groups of profiles: what they share, and create/rename/delete/add/remove: groups.py)
     commands   ace ingest-hermes scopes seats seat no-vis  (scopes, seats, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
@@ -382,6 +383,13 @@ def _settings(root, action, payload):
     return hermes_settings.settings(root, action, payload)
 
 
+def _groups(root, action, payload=None):
+    """The port "groups": the groups of profiles of the Hermes root of the store at root (groups.py), or None."""
+    from . import config_layers, groups
+    hermes = config_layers.hermes_of(root)
+    return groups.apply(hermes, action, payload) if hermes else None
+
+
 def _config_layers(root):
     """The config files that the explorer of the store at root may show and change (config_layers.py)."""
     from . import config_layers
@@ -403,6 +411,7 @@ if ports.layer("hermes", __file__):
     ports.give("price", _price)
     ports.give("ace_join", _ace_join)
     ports.give("config_layers", _config_layers)
+    ports.give("groups", _groups)
     ports.command("ace", _add_ace, _ace, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
     ports.command("slot", _add_slot, _slot, after="vault")

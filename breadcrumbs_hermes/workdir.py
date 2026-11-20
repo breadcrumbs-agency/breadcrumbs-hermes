@@ -126,15 +126,27 @@ def resolve(base: str, kwargs: Optional[dict] = None, cfg: Optional[dict] = None
     return info
 
 
+def groups_above(base: str) -> List[Tuple[str, str]]:
+    """[(label, folder)] that the profile of `base` reads before its own file: the default profile's, then its group's
+    (groups.py). Nothing for the default profile itself, or for a store that is in no Hermes root."""
+    from . import config_layers, groups
+
+    hermes = config_layers.hermes_of(base)
+    if not hermes:
+        return []
+    return groups.chain_folders(hermes, profile_of(os.path.dirname(os.path.abspath(base)), hermes))
+
+
 def config_folders(base: str, kwargs: Optional[dict] = None, info: Optional[dict] = None) -> List[Tuple[str, str]]:
     """[(label, folder)] of the config.json files that a chat reads, the widest first: the profile's (base), then the
     one of the store of the chat's scope when that store exists. Every reader of the dials takes this chain (the
     provider, ACE and the request options), so a scope's file counts the same for each, and the explorer shows the same
-    chain (config_layers.py). `info` is a resolve() that the caller has; without one the scope is looked up here, with
+    chain (config_layers.py). Before the profile's file come the default profile's and the profile's group's
+    (groups_above): profiles inherit settings, never memory. `info` is a resolve() that the caller has; without one the scope is looked up here, with
     no folder made. Each dial resolves through the chain (dials.resolve)."""
     from breadcrumbs import dials
 
-    out = [("profile", base)]
+    out = groups_above(base) + [("profile", base)]
     if info is not None:
         store = info.get("store") or base
     else:
@@ -155,7 +167,7 @@ def config_chain(base: str, kwargs: Optional[dict] = None, info: Optional[dict] 
 
     folders = config_folders(base, kwargs, info)
     if len(folders) == 1:
-        return dials.config(base)
+        return dials.config(base)  # a chain of one file is that file
     return [(label, dials.config(folder)) for label, folder in folders]
 
 
@@ -173,11 +185,34 @@ def stores_above(base: str, info: dict) -> List[Tuple[str, str, str]]:
 
 
 def stores_all(base: str, info: dict) -> List[Tuple[str, str, str]]:
-    """[(label, root, store folder)] of every other store of the profile that has an index: where scope "all" reads."""
+    """[(label, root, store folder)] of every other store of the profile that has an index: where scope "all" reads.
+    The members of the profile's group (groups.py) count as part of it; no other profile's memory is read."""
     out = [(scope.short(s["root"]), s["root"], s["path"]) for s in scope.known(base)
            if s["present"] and os.path.realpath(s["path"]) != os.path.realpath(info.get("store", ""))]
     if os.path.isfile(os.path.join(base, "index.db")) and os.path.realpath(base) != os.path.realpath(info.get("store", "")):
         out.append(("default", "", base))
+    out += stores_of_group(base)
+    return out
+
+
+def stores_of_group(base: str) -> List[Tuple[str, str, str]]:
+    """The stores of the other members of the profile's group that have an index, labelled by profile."""
+    from . import config_layers, groups
+
+    hermes = config_layers.hermes_of(base)
+    if not hermes:
+        return []
+    mine = profile_of(os.path.dirname(os.path.abspath(base)), hermes)
+    homes = dict(profiles(hermes))
+    out = []
+    for peer in groups.peers(hermes, mine):
+        peer_base = os.path.join(homes.get(peer, ""), "breadcrumbs")
+        if not os.path.isdir(peer_base):
+            continue
+        if os.path.isfile(os.path.join(peer_base, "index.db")):
+            out.append(("profile %s" % peer, "", peer_base))
+        out += [("profile %s / %s" % (peer, scope.short(s["root"])), s["root"], s["path"])
+                for s in scope.known(peer_base) if s["present"]]
     return out
 
 
