@@ -211,7 +211,7 @@ A prompt or a skill cannot do these. Each one is a plugin surface of Hermes.
 - **A memory provider.** Recall before each turn, inside a steady-state budget: it holds context overflows at 2%
   to 5% of turns. The tools `crumb` and `crumb_find`. A receipt for each read. Tool calls and their results
   become linked `step` and `tool` crumbs.
-- **A context engine** (ACE): `hermes config set context.engine breadcrumbs`. Off by default: it registers only when `memory.provider` is also `breadcrumbs`; otherwise Hermes's own compaction runs.
+- **A context engine** (ACE): where `memory.provider` is `breadcrumbs`, the plugin takes the context seat itself when it loads (the dial `takeover`, on by default) and turns off the Hermes compaction extras that overlap it. It registers only with `memory.provider breadcrumbs` too; another engine plugin keeps its seat. `python -m breadcrumbs compaction off` leaves a profile to Hermes's own compaction.
 - **`/scope`**: a memory for each git repository or folder, chosen by the folder of the chat. It is a slash command and no
   hook. The dial `family` adds one hook, `transform_tool_result` (see the handbook below).
 - **`/viz`**: a slash command that opens the explorer of the whole profile, with no command line: it first imports the profile's `state.db` (read-only, idempotent) so every Hermes chat shows, not only the chats that this plugin has seen, then opens the base store with all of its scopes. Hermes is not a secure portal and its names are not stable, so the explorer sees what the profile holds; the viewers' disclosure level and `novis` decide what it shows. `"viz": "scope"` in `config.json` narrows it to the memory of the chat's scope.
@@ -359,7 +359,13 @@ hermes -p <profile> config set memory.provider breadcrumbs  # first: the provide
 hermes -p <profile> config set context.engine breadcrumbs   # back: ... context.engine compressor
 ```
 
-Without `memory.provider breadcrumbs`, ACE does not register, and Hermes's own compaction stays in charge.
+Without `memory.provider breadcrumbs`, ACE does not register, and Hermes's own compaction stays in charge. With it, and
+`context.engine` unset or `compressor`, the plugin sets `context.engine breadcrumbs` at load (logged as `took` in
+`heal.log`) and sets `compression.idle_compact_after_seconds`, `proactive_prune_tokens`, `prepare_ahead` and
+`codex_responses_native` off where a profile turned them on, since they compact outside the engine.
+`compression.enabled` stays on: Hermes tests it before it asks any engine to compact. A Codex app-server thread is
+compacted by Codex itself (`compression.codex_app_server_auto`), which no engine can take over. The dial `takeover`
+false, or `BREADCRUMBS_TAKEOVER=0`, stops all of it.
 
 When the plugin loads in a profile with `context.engine breadcrumbs` and no way to open the folds, it fixes the
 setting itself, through Hermes's own config writer, and logs the fix to `<profile>/breadcrumbs/heal.log`:
@@ -422,6 +428,7 @@ the last change of its settings. The request options reach the wire by the provi
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models add anthropic/claude-haiku-5-5 ace_tokens=90000 temperature=0.7
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models list | show ID | set ID K=V | unset ID K | note ID TEXT | since ID DATE | rm ID
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models clone SRC DST [--link] [--force] | link A B | unlink A B | relate A B
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models export [FILE] | import FILE|-   # one JSON document; it prints to stdout and writes a file only where you name one
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models seen      # models that ran (usage.log) with no entry, and what they read
 python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models suggest   # pairs that share by family, and near names to link
 ```
@@ -462,6 +469,7 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only), writes them to the child's own store (the folder children/ID of the breadcrumbs folder), and exports them there as a CAR file. It then imports the CAR into the profile's own store as private crumbs. When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
 | `update_ms` | 2,000 | 200 to 60000 | `BREADCRUMBS_UPDATE_MS` | The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the map, the context and the trail; the measures poll at three times it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
 | `live` | true | true or false | `BREADCRUMBS_LIVE` | Whether the live viewers (the explorer page of /viz) ask the store every update_ms which of its data changed (its index, its logs, this chat's config) and reload only that part. Off: the page loads once and reloads by hand. Read from the top level of config.json and from the environment, as update_ms is. |
+| `takeover` | true | true or false | `BREADCRUMBS_TAKEOVER` | Whether the plugin takes over the context of a Hermes profile whose memory provider it is: when it loads and context.engine is unset or Hermes's own compressor, it selects itself (ACE folds the context, Hermes's own compaction stands down) and turns off the Hermes compaction extras that overlap it (idle compaction, proactive pruning, prepared summaries, native Responses compaction). Off: the plugin never changes the context settings. `compaction off` sets it false and `compaction on` clears it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
 
 | Environment knob | Default | What it does |
 |---|---|---|

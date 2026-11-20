@@ -135,8 +135,37 @@ class HealTest(unittest.TestCase):
 
     def test_a_right_or_unselected_profile_is_left_alone(self):
         for config in ("memory:\n  provider: breadcrumbs\ncontext:\n  engine: breadcrumbs\n",
-                       "memory:\n  provider: breadcrumbs\n", "context:\n  engine: lcm\n", ""):
+                       "memory:\n  provider: breadcrumbs\ncontext:\n  engine: lcm\n",  # another engine keeps its seat
+                       "memory:\n  provider: honcho\n", "context:\n  engine: lcm\n", ""):
             self.assertEqual(self.heal(config)[:2], (None, []), config)
+
+    def test_the_plugin_takes_the_context_where_it_is_the_memory_provider(self):
+        for config in ("memory:\n  provider: breadcrumbs\n", "memory:\n  provider: breadcrumbs\ncontext:\n  engine: compressor\n"):
+            did, sets, home = self.heal(config)
+            self.assertEqual((did, sets), ("took", [("context.engine", "breadcrumbs")]), config)
+            with open(os.path.join(home, "breadcrumbs", "heal.log")) as f:
+                self.assertIn("took: memory.provider is breadcrumbs and context.engine was", f.read())
+
+    def test_taking_over_turns_off_the_overlapping_hermes_extras(self):
+        did, sets, _ = self.heal("memory:\n  provider: breadcrumbs\ncompression:\n  enabled: true\n"
+                                 "  idle_compact_after_seconds: 1800\n  proactive_prune_tokens: 0\n"
+                                 "  prepare_ahead: true\n  codex_responses_native: false\n")
+        self.assertEqual(did, "took")
+        self.assertEqual(sets, [("context.engine", "breadcrumbs"), ("compression.idle_compact_after_seconds", "0"),
+                                ("compression.prepare_ahead", "false")])  # enabled stays: Hermes asks no engine without it
+
+    def test_the_takeover_dial_and_the_environment_leave_the_profile_alone(self):
+        home = self.home("memory:\n  provider: breadcrumbs\n")
+        os.makedirs(os.path.join(home, "breadcrumbs"))
+        with open(os.path.join(home, "breadcrumbs", "config.json"), "w") as f:
+            f.write('{"takeover": false}')
+        sets = []
+        self.assertIsNone(compaction.heal(home, setter=lambda k, v: sets.append((k, v))))
+        self.assertEqual(sets, [])
+        home2 = self.home("memory:\n  provider: breadcrumbs\n")
+        with mock.patch.dict(os.environ, {"BREADCRUMBS_TAKEOVER": "0"}):
+            self.assertIsNone(compaction.heal(home2, setter=lambda k, v: sets.append((k, v))))
+        self.assertEqual(sets, [])
 
     def test_the_opt_out_leaves_a_wrong_profile_alone(self):
         self.assertEqual(self.heal("context:\n  engine: breadcrumbs\n", BREADCRUMBS_NO_HEAL="1")[:2], (None, []))
