@@ -405,6 +405,25 @@ that Hermes builds.
 {"ace_tokens": 200000, "models": {"*nemotron*": {"ace_tokens": 290000, "ace_fold_to": 0.9}}}
 ```
 
+**The model dictionary.** `"catalog"` in the same file holds one entry for each `VENDOR/MODEL` (the vendor is the
+provider Hermes calls: `anthropic`, `openrouter`, `nous`, `bedrock`, ...; `*` is any), with the same settings as a
+`"models"` entry. Entries relate in three ways. A **clone** is a copy (`models clone anthropic/claude-haiku-5-5 nous`
+writes `nous/claude-haiku-5-5`); the two then change alone. A **link** is a live bond that you make, between names
+that do not read alike (`models link ollama/haiku-local anthropic/claude-haiku-5-5`): a model with no value of its own
+takes the value of a linked entry. A **family** is a live bond that is made for you: names that read the same once
+the route is taken off (a slug prefix, a bedrock region, a date, `-latest`, `:free`, `5.5` for `5-5`) share, so
+`openrouter/anthropic/claude-haiku-5.5` reads the settings of `anthropic/claude-haiku-5-5` with no entry of its
+own; `models unlink` stops that for a pair. A request reads family, then links, then its own entry, after the
+built-in entries and before the `"models"` globs. The request options reach the wire by the provider of the request.
+
+```sh
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models add anthropic/claude-haiku-5-5 ace_tokens=90000 temperature=0.7
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models list | show ID | set ID K=V | unset ID K | note ID TEXT | rm ID
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models clone SRC DST [--link] [--force] | link A B | unlink A B | relate A B
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models seen      # models that ran (usage.log) with no entry, and what they read
+python -m breadcrumbs --home $HERMES_HOME/breadcrumbs models suggest   # pairs that share by family, and near names to link
+```
+
 **The size of the context.** ACE keeps a chat near `ace_tokens`. A model that reads a lot of data needs more room,
 and nothing stops it but Hermes's own threshold and `ace_ceiling`: when an interval of reading passes the target, the target grows by
 `ace_ratchet`, so the data stays in one place (fewer folds, fewer layers). When the tools work without growing the

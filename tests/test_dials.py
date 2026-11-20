@@ -115,6 +115,17 @@ class MiddlewareTest(unittest.TestCase):
         out = self.mw(request={"model": "local-nemo"}, model="local-nemo", provider="custom", api_mode="chat_completions")
         self.assertEqual((out["source"], out["request"]["temperature"]), ("breadcrumbs", 0.42))
 
+    def test_the_model_dictionary_reaches_the_request_by_provider_and_family(self):
+        write_config(self.tmp.name, {"catalog": {"entries": {
+            "openrouter/vendor/model-x-1.5": {"settings": {"temperature": 0.2}},
+            "custom/model-x-1-5": {"settings": {"temperature": 0.9, "top_k": 20}}}}})
+        # the vendor of an entry is the provider of the request; its own entry wins over its family
+        self.assertEqual(self.send("vendor/model-x-1.5", provider="openrouter")["temperature"], 0.2)
+        kw = self.send("model-x-1-5", provider="custom")
+        self.assertEqual((kw["temperature"], kw["extra_body"]), (0.9, {"top_k": 20}))
+        # a provider with no entry reads its family; when two members set one value, the last by id wins
+        self.assertEqual(self.send("model-x-1.5", provider="other")["temperature"], 0.2)
+
     def test_an_edit_applies_to_the_next_request_and_a_bad_file_changes_nothing(self):
         write_config(self.tmp.name, {"models": {"*": {"temperature": 0.5}}})
         self.assertEqual(self.send("m")["temperature"], 0.5)

@@ -1,6 +1,8 @@
 """The request options of a model on Hermes's open wire: the keys of a "models" entry of config.json that are no dial.
 
-The dials and the file are breadcrumbs/dials.py (common). A "models" entry also holds the request options of a model
+The dials and the file are breadcrumbs/dials.py (common); the model dictionary (the "catalog" of the file, by vendor,
+with clones, links and the family that is made for you) is breadcrumbs/catalog.py, and the provider of the request
+picks the entries of its vendor. A "models" entry also holds the request options of a model
 (temperature, top_p, top_k, ...): any key that is no dial and does not start with "ace_". Hermes sends no temperature
 of its own on the OpenAI chat-completions wire. The main agent passes none to the transport, and
 agent/transports/chat_completions.py _base_kwargs reads one only from a provider profile's fixed value. register()
@@ -71,7 +73,7 @@ def middleware(home):
             if oauth(provider):
                 return None
             from .workdir import config_chain  # the profile's file, then the chat's scope's (a scope's entry wins)
-            opts = dials.options(config_chain(os.path.join(home(), "breadcrumbs")), model or request.get("model"))
+            opts = dials.options(config_chain(os.path.join(home(), "breadcrumbs")), model or request.get("model"), provider)
             if not opts:
                 return None
             return {"request": apply(dict(request), opts), "source": "breadcrumbs",
