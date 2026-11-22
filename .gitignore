@@ -26,3 +26,4 @@ doc/*
 !doc/index.html
 !doc/.nojekyll
 !doc/video/
+.worktrees/
