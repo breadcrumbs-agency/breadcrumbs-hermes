@@ -4,6 +4,7 @@ Subprocess and webbrowser are mocked: no window and no browser opens, and no app
 a test home is read from its own view.token at run time; it is never printed.
 """
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
+import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import contextlib
 import io
 import os
@@ -218,7 +219,7 @@ class Web(Base):
                 mock.patch("webbrowser.open", return_value=True) as browser:
             code, out, err = self.run_open()
         self.assertEqual((code, err), (0, ""))
-        make.assert_called_once_with(self.home, port=port)
+        make.assert_called_once_with(self.home, port=port, disclose=None)
         browser.assert_called_once_with("http://127.0.0.1:%d/#k=%s" % (port, self.key))
         self.assertIn("http://127.0.0.1:%d/" % port, out)
         self.assertNotIn(self.key, out + err)  # the address is printed without the token
@@ -238,7 +239,7 @@ class Web(Base):
         busy = self.serve(store(os.path.join(self.tmp.name, "other")))
         real, seen = view.make_server, []
 
-        def make(home, port):
+        def make(home, port, disclose=None):
             seen.append(port)
             server = real(home, port=port)
             server.serve_forever = lambda poll_interval=0.5: None  # return at once, as a Ctrl-C would

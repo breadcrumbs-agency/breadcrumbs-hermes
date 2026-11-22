@@ -1,4 +1,5 @@
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
+import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import calendar
 import contextlib
 import importlib.util
@@ -2072,7 +2073,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sorted(view.API), ["/api/ace", "/api/context", "/api/crumb", "/api/find", "/api/graph",
                                             "/api/path", "/api/session", "/api/trail", "/api/venn"])
         # the explorer's own routes (the Measures panel, the calendar layout): the dashboard table (tests/test_dashboard.py) is not changed by them
-        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/changes", "/api/harness", "/api/measures", "/api/measures/labels", "/api/qr", "/api/settings", "/api/where"])
+        self.assertEqual(sorted(view.EXPLORER_API), ["/api/calendar", "/api/changes", "/api/disclosure", "/api/harness", "/api/measures", "/api/measures/labels", "/api/qr", "/api/settings", "/api/where"])
 
 if __name__ == "__main__":
     unittest.main()

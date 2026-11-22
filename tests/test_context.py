@@ -5,6 +5,7 @@ holds the View output for it; SpaceGraph's suite asserts the same file. To write
 intended change: BREADCRUMBS_WRITE_FIXTURE=1 python -m unittest tests.test_context
 """
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
+import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import json
 import os
 import tempfile

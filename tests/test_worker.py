@@ -2,6 +2,7 @@
 "worker": the brief that the lead gave the child, the report that came back, the refs that each of them names, and
 the session ids. Hermes calls on_delegation once for each child, before the tool returns."""
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
+import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import os
 import tempfile
 import unittest

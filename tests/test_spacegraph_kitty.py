@@ -1,6 +1,7 @@
 """The native Kitty/Ghostty explorer, breadcrumbs/spacegraph_kitty.py: its pure parts (the layouts, the semantic zoom,
 the spring camera, the mouse parser, the Kitty escapes, the frame skip) and a headless run on the demo store.
 No test needs a terminal, a network, Chrome or a model."""
+import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import base64
 import contextlib
 import importlib.util
