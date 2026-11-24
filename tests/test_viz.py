@@ -1,4 +1,5 @@
 """`/viz` of Hermes (workdir.open_viz) and `help`. The explorer's own tests are in breadcrumbs-common (tests/test_viz.py)."""
+import _hermes_scrub  # noqa: F401  (state.db is read through agent.redact: a stand-in where Hermes is absent)
 import contextlib
 import io
 import os

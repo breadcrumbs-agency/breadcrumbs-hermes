@@ -1,8 +1,11 @@
+import _hermes_scrub  # noqa: F401  (state.db is read through agent.redact: a stand-in where Hermes is absent)
 import json
 import os
 import sqlite3
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from breadcrumbs.crumbs import get_crumb
 from breadcrumbs_hermes.hermes_ingest import ingest_state_db
@@ -80,6 +83,61 @@ class HermesIngestTest(unittest.TestCase):
             self.ingest()
         finally:
             os.chmod(self.db, 0o644)
+
+
+KEY = "sk-proj-" + "Q7f2" * 12  # a fake key in a real shape
+
+
+class ScrubTest(unittest.TestCase):
+    """state.db keeps a typed key as typed; the store gets it only as Hermes's scrub (agent.redact.redact_for_egress)
+    gives it, in the text, the arguments of a call and the title. Without that scrub, nothing is read."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = os.path.join(self.tmp.name, "state.db")
+        db = sqlite3.connect(self.db)
+        db.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, started_at REAL)")
+        db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
+                   " content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL)")
+        db.execute("INSERT INTO sessions VALUES ('s4', ?, 400)", ("key " + KEY,))
+        calls = CALLS.replace("notes.txt", KEY)
+        db.executemany("INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp)"
+                       " VALUES (?,?,?,?,?,?,?)",
+                       [("s4", "user", "Here is my new OpenAI key %s remember it" % KEY, None, None, None, 401),
+                        ("s4", "assistant", "", None, calls, None, 402),
+                        ("s4", "tool", "kettle at eighty degrees", "call_9", None, "read_file", 403),
+                        ("s4", "assistant", "SAVED", None, None, None, 404)])
+        db.commit()
+        db.close()
+        home = os.path.join(self.tmp.name, "bc")
+        self.store = Store(os.path.join(home, "store"))
+        self.index = Index(os.path.join(home, "index.db"))
+        self.refs = Refs(os.path.join(home, "refs"))
+
+    def tearDown(self):
+        self.index.close()
+        self.store.close()
+        self.tmp.cleanup()
+
+    def holding(self, text):
+        self.store.flush()
+        return [i for i in self.store.ids() if text.encode() in self.store.get(i)]
+
+    def test_no_blob_holds_the_key_and_the_masked_form_is_kept(self):
+        ingest_state_db(self.db, self.store, self.index, self.refs)
+        self.assertEqual(self.holding(KEY), [])
+        masked = KEY[:6] + "..." + KEY[-4:]
+        self.assertTrue(self.holding("Here is my new OpenAI key %s remember it" % masked))
+        sess = get_crumb(self.store, self.refs.get("sess-s4"))
+        self.assertNotIn(KEY, sess.title)
+        self.assertEqual(self.index.search(KEY[8:20]), [])
+
+    def test_without_hermes_nothing_is_read(self):
+        with mock.patch.dict(sys.modules, {"agent.redact": None}):
+            with self.assertRaises(RuntimeError):
+                ingest_state_db(self.db, self.store, self.index, self.refs)
+        self.assertEqual(len(self.store), 0)
+        self.assertIsNone(self.refs.get("sess-s4"))
 
 
 CALLS = '[{"id": "call_9", "type": "function", "function": {"name": "read_file", "arguments": "{\\"path\\": \\"notes.txt\\"}"}}]'

@@ -8,6 +8,7 @@ It uses a scratch HERMES_HOME. It never touches a real profile.
 
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 
@@ -395,6 +396,8 @@ def scan_check():
     with tempfile.TemporaryDirectory() as top:
         copy = os.path.join(top, "breadcrumbs")
         shutil.copytree(REPO, copy, ignore=skip)
+        for pages in ("doc", "docs"):  # pages and films ship in no bundle (breadcrumbs/tools/bundle.py): scan what ships
+            shutil.rmtree(os.path.join(copy, pages), ignore_errors=True)
         result = scan_plugin(Path(copy), source="https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin.git")
     high = ["%s %s:%s" % (f.severity, f.file, f.line) for f in result.findings if f.severity in ("high", "critical")]
     assert result.verdict == "safe", (result.verdict, high)
@@ -402,8 +405,54 @@ def scan_check():
     print("OK: Hermes's plugin scanner gave the plugin a safe verdict (%d notes, none high)" % len(result.findings))
 
 
+def scrub_check():
+    """A key typed into a chat: state.db (Hermes's own log) keeps it as typed, Hermes scrubs it on the way to the
+    provider, and the import of state.db at session end reads it through the same scrub. No store holds the key."""
+    import secrets
+    import warnings
+    from breadcrumbs.store import Store
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from hermes_state import SessionDB
+    key = "sk-proj-" + secrets.token_urlsafe(48)  # fake: random, valid nowhere
+    typed = "Here is my new OpenAI key %s remember it" % key
+    with tempfile.TemporaryDirectory() as home:
+        os.environ["HERMES_HOME"] = home
+        db = SessionDB(db_path=os.path.join(home, "state.db"))
+        db.create_session("sc-1", "cli")
+        db.append_message("sc-1", "user", typed)
+        db.append_message("sc-1", "assistant", "SAVED")
+        db.close()
+        con = sqlite3.connect(os.path.join(home, "state.db"))
+        assert any(key in (r[0] or "") for r in con.execute("SELECT content FROM messages")), "state.db lacks the key"
+        con.close()
+        mgr = MemoryManager()
+        mgr.add_provider(BreadcrumbsProvider())
+        mgr.initialize_all(session_id="sc-1", platform="cli", hermes_home=home, agent_context="primary")
+        mgr.sync_all(typed, "SAVED", session_id="sc-1")
+        assert mgr.flush_pending(timeout=10), "sync did not drain"
+        mgr.on_session_end([{"role": "user", "content": typed}, {"role": "assistant", "content": "SAVED"}])
+        mgr.shutdown_all()
+        assert not os.path.exists(os.path.join(home, "breadcrumbs", "ingest.err")), "the import of state.db failed"
+        stores = [os.path.join(d, "store") for d, subs, _ in os.walk(home) if "store" in subs and
+                  os.path.exists(os.path.join(d, "index.db"))]
+        held = blobs = 0
+        for path in stores:
+            store = Store(path)
+            try:
+                for i in store.ids():
+                    blobs += 1
+                    held += key.encode() in store.get(i)
+            finally:
+                store.close()
+        print("scrub: %d stores, %d blobs, %d hold the key" % (len(stores), blobs, held))
+        assert stores and blobs and held == 0, (stores, blobs, held)
+    print("OK: a typed key is in state.db and in no blob of the store after sync_turn and the state.db import")
+
+
 if __name__ == "__main__":
     main()
+    scrub_check()
     scan_check()
     slot_check()
     ace_check()
