@@ -195,15 +195,6 @@ def _context_bytes(messages):
 REF = re.compile(r"(?<![0-9A-Za-z_.])([0-9a-f]{8}(?:\.\d+)?)(?::\d{1,9}-\d{1,9})?(?![0-9A-Za-z_])")
 
 
-def _worker_text(brief, report, parent, child="", car="", root=""):
-    """The text of a worker receipt: its session ids (and the CAR and the root id, when known), then the brief and
-    the report word for word. Each part starts on a line of its own."""
-    def lines(text):
-        return text if not text or text.endswith("\n") else text + "\n"
-    head = "".join("%s: %s\n" % (k, v) for k, v in (("parent", parent), ("child", child), ("car", car), ("root", root)) if v)
-    return "worker\n" + head + "brief:\n" + lines(brief) + "report:\n" + lines(report)
-
-
 def _turn_rows(messages):
     """The tool steps of this turn: the rows after the last user row that call tools or carry a tool
     result. The user text and the final answer come from sync_turn's own arguments."""
@@ -239,7 +230,7 @@ class BreadcrumbsProvider(MemoryProvider):
         self._setup = None  # the slot for setup and for its reason, loaded (not started) when it does not run
         self.hive = None  # remote stores (hive.py), from <root>/config.json "hive"; None = local only
         self.handbook = None  # the dispatch skill's name when Hermes registered it (register_handbook)
-        self.family = False  # the dial family: at on_delegation, export the child's session to a CAR (family.py)
+        self.family = False  # the dial family: at on_delegation, the child's session from state.db into this store
 
     @property
     def budget(self):
@@ -268,6 +259,16 @@ class BreadcrumbsProvider(MemoryProvider):
         base_cfg = dials.config(self.home_root)
         self.scope_info = workdir.resolve(self.home_root, kwargs, base_cfg)  # the memory of this chat's folder
         self.root = self.scope_info["store"]
+        if kwargs.get("agent_context") in (None, "", "primary"):  # once: the copies of state.db's texts become locators
+            try:
+                from .hermes_ingest import relocate
+                roots = dict.fromkeys((self.home_root, self.root))
+                got = relocate([os.path.join(r, "store") for r in roots], os.path.join(self._home, "state.db"))
+                for r in roots:
+                    if os.path.join(r, "store") in got:
+                        self._log("relocate: %d copied blobs of state.db's texts dropped" % got[os.path.join(r, "store")], r)
+            except Exception as e:  # the store opens as it is: the copies stay until the next start
+                self._log("relocate: %s: %s" % (type(e).__name__, e))
         self.store = Store(os.path.join(self.root, "store"))
         self.index = Index(os.path.join(self.root, "index.db"))
         self.refs = Refs(os.path.join(self.root, "refs"))
@@ -484,7 +485,7 @@ class BreadcrumbsProvider(MemoryProvider):
                         reader.close()
                     if self.writable and where:  # the receipt names the peer or scope; the local index has no row
                         n = len(text.encode("utf-8"))
-                        self._receipt("open", [("%s@%s" % (ref.strip(), where), level, n)], n, cap=cap, want=want, text=text)
+                        self._receipt("open", [("%s@%s" % (ref.strip(), where), level, n)], n, cap=cap, want=want)
                     elif self.writable:  # the model chose to open it: that is a use
                         try:
                             self.index.touch(ref.partition(":")[0].strip(), int(self.clock()))
@@ -493,7 +494,7 @@ class BreadcrumbsProvider(MemoryProvider):
                             self.index.db.rollback()
                         self._visit(ref.strip(), level)
                         n = len(text.encode("utf-8"))
-                        self._receipt("open", [(ref.strip(), level, n)], n, cap=cap, want=want, text=text)
+                        self._receipt("open", [(ref.strip(), level, n)], n, cap=cap, want=want)
                 elif name == "crumb_find":
                     q, k = str(args.get("q", "")), int(args.get("k", 8))
                     pend = self.hive.send({"op": "find", "q": q, "k": k}) if self.hive else None  # in flight
@@ -511,7 +512,7 @@ class BreadcrumbsProvider(MemoryProvider):
                         items.extend(hits)
                     self._spend(len(text.encode("utf-8")))
                     self._receipt("find", items, len(text.encode("utf-8")), q=str(args.get("q", "")),
-                                  cap=text.startswith("[cut:"), want=want, text=text)
+                                  cap=text.startswith("[cut:"), want=want)
                 else:
                     return json.dumps({"error": "unknown tool: %s" % tool_name})
             return json.dumps({"text": text}, ensure_ascii=False)
@@ -648,7 +649,7 @@ class BreadcrumbsProvider(MemoryProvider):
                 want = len((PREFETCH_HEAD + "".join(more)).encode("utf-8"))
             self._recall_bytes += n
             self._spend(n, current)
-            self._receipt("recall", items, n, current, q=query, cap=want > n, want=want, text=text)
+            self._receipt("recall", items, n, current, q=query, cap=want > n, want=want)
             return text
 
     def _superseded(self, cands, hit_refs, current, now):
@@ -683,10 +684,7 @@ class BreadcrumbsProvider(MemoryProvider):
         def put_handle(old, h):
             data = h.encode("utf-8")
             pieces.append(h)
-            ref = old  # only the primary agent writes (the receipt holds the exact line as a text)
-            if self.writable:
-                ref = "%s:0-%d" % (put_text(self.store, data), len(split_lines(data)))
-            items.append((ref, 1.0 if self.writable else 0.0, len(data)))
+            items.append((old, 0.0, len(data)))  # the handle of the old crumb: level 0 renders it again
             return len(data)
 
         for i, share in zip(order, split(max(0, cap), [weights[i] for i in order])):
@@ -734,7 +732,7 @@ class BreadcrumbsProvider(MemoryProvider):
                 return got
             self._recall_bytes += len(data)
             self._spend(len(data), sid)
-            self._receipt("recall", [(cid, 1.0, len(data))], len(data), sid, q=query, text=got)
+            self._receipt("recall", [(cid, 1.0, len(data))], len(data), sid, q=query)
             return got
 
     def recall_status(self):
@@ -755,9 +753,14 @@ class BreadcrumbsProvider(MemoryProvider):
                            messages=messages, turn_author=turn_author)
 
     def _sync_turn(self, user_content, assistant_content, session_id, messages):
+        """The turn becomes crumbs. Hermes has written its rows to state.db before it calls sync_turn
+        (turn_finalizer: the persist step, then the memory sync), so the crumbs point at those rows and hold no text
+        (hermes_ingest.import_session). Only a turn that state.db does not hold is stored from the hand-off."""
         if not self.writable or self.store is None:
             return
         sid = session_id or self.session_id
+        if self._import_turn(sid, messages):
+            return
         with self._lock:
             ts = int(self.clock())
             ref = _ref_name("sess-", sid)
@@ -789,6 +792,35 @@ class BreadcrumbsProvider(MemoryProvider):
             self.ctl.observe(self._compacted or crowded)
             self._compacted = False
             self._save_horizon()
+
+    def _import_turn(self, sid, messages):
+        """The new rows of session sid in state.db as crumbs after its turns; False when state.db has no row of sid
+        (no state.db, or Hermes is not importable: the hand-off is stored instead)."""
+        db = os.path.join(self._home, "state.db") if getattr(self, "_home", None) else ""
+        if not db or not os.path.exists(db):
+            return False
+        try:
+            from .hermes_ingest import session_import
+            with self._lock:
+                got = session_import(db, self.store, self.index, self.refs, sid)
+                if got is None:
+                    return False
+                sess, new = got
+                if new:
+                    self._turns.pop(sid, None)
+                    commit(self.store, self.refs, "main", [sess], "turn " + sid)
+                self.store.flush()
+                self.index.commit()
+        except (RuntimeError, sqlite3.Error, OSError) as e:
+            self._log("turn %s: state.db not read: %r" % (sid, e))
+            return False
+        if new:
+            self._queue_summaries(closed_spans(self.store, sess))
+        ctx = _context_bytes(messages)
+        self.ctl.observe(self._compacted or (ctx > 0 and self._recall_bytes > self.recall_share * ctx))
+        self._compacted = False
+        self._save_horizon()
+        return True
 
     def _save_horizon(self):
         tmp = self._horizon_path + ".tmp"
@@ -843,7 +875,7 @@ class BreadcrumbsProvider(MemoryProvider):
             level = min(1.0, 4800 / max(1, self.zoom.size(sess)))
             text = (COMPRESS_HEAD + self.zoom.render(sess, level))[:6000]
             n = len(text.encode("utf-8"))
-            self._receipt("compress", [(sess, level, n - len(COMPRESS_HEAD.encode("utf-8")))], n, ovf=True, text=text)
+            self._receipt("compress", [(sess, level, n - len(COMPRESS_HEAD.encode("utf-8")))], n, ovf=True)
             return text
 
     # -- lifecycle ----------------------------------------------------------
@@ -874,14 +906,12 @@ class BreadcrumbsProvider(MemoryProvider):
         before = self._spent[2] if self._spent[:2] == (sid, turn) else 0
         self._spent = (sid, turn, before + int(nbytes))
 
-    def _receipt(self, ev, items, nbytes, sid=None, ovf=False, q="", cap=False, want=None, text=None, extra=None):
+    def _receipt(self, ev, items, nbytes, sid=None, ovf=False, q="", cap=False, want=None, extra=None):
         """Record one context event as an "rcpt" crumb: items = [(ref, level, bytes)] in the order the
         model saw them. kids and ranges link the crumbs and texts; meta.items, lv and b line up; meta.prev
         is the receipt before it (a hash chain under the ref rcpt-<session>); meta.q is the query of a
-        recall or a find (first 120 characters). text is what the model saw, word for word: it is kept as a
-        document, the last range of the receipt (meta.ctx names it). Below level 1 the words of a text come
-        from the index's counts, so rendering the items again later would show another text. Receipts have no
-        text in the index, so search never finds them. Only the primary agent writes.
+        recall or a find (first 120 characters). A receipt keeps no text: each item at its level renders what the
+        model saw again (Zoom.render). Only the primary agent writes.
         The event "worker" is a delegation (see _worker_receipt): it may have no items, and extra adds its
         keys to meta (a key that the receipt sets itself is kept)."""
         if not self.writable or self.store is None or not (items or ev == "worker"):
@@ -907,10 +937,6 @@ class BreadcrumbsProvider(MemoryProvider):
         for key, value in (extra or {}).items():
             meta.setdefault(key, value)
         try:  # a receipt records the context; it must never fail the recall or the tool that made it
-            if text:
-                data = text.encode("utf-8")
-                meta["ctx"] = put_text(self.store, data)
-                ranges.append([meta["ctx"], 0, len(split_lines(data))])
             rid = put_crumb(self.store, Crumb("rcpt", ev, kids=list(dict.fromkeys(x for x in here if ":" not in x)),
                                               ranges=ranges, meta=meta))
             self.refs.set(name, rid)
@@ -939,12 +965,12 @@ class BreadcrumbsProvider(MemoryProvider):
             out[ref] = None
         return list(out)
 
-    def _worker_receipt(self, brief, report, child="", car="", root=""):
+    def _worker_receipt(self, brief, report, child="", root=""):
         """Record a delegation as one "worker" receipt, on the parent's side: the brief that the lead gave the
         child, the report that came back, and both session ids (meta.sess is the parent, meta.child the child).
-        car is the CID of the child's CAR and root the id of its root crumb, once the lead holds them. meta.named
+        root is the id of the child's session crumb here, once the lead holds it. meta.named
         and meta.cited are the refs of the brief and of the report that open in this store; meta.items holds both
-        lists. The text keeps every ref as written. A ref is a name here (level 0, the bytes of the name): the
+        lists. A ref is a name here (level 0, the bytes of the name): the
         pieces went to the child, not into this context, and the receipt spends none of the turn budget.
         Returns the receipt id, or None when nothing was written (a read-only agent, or nothing to record)."""
         if not self.writable or self.store is None:
@@ -956,10 +982,9 @@ class BreadcrumbsProvider(MemoryProvider):
             sid = self.session_id
             named, cited = self._refs_in(brief), self._refs_in(report)
             items = [(r, 0.0, len(r)) for r in dict.fromkeys(named + cited)]
-            text = _worker_text(brief, report, sid, child, car, root)
-            ids = {k: v for k, v in (("child", child), ("car", car), ("root", root)) if v}
+            ids = {k: v for k, v in (("child", child), ("root", root)) if v}
             extra = {**ids, "named": named, "cited": cited}
-            return self._receipt("worker", items, len(text.encode("utf-8")), sid, q=brief, text=text, extra=extra)
+            return self._receipt("worker", items, len((brief + report).encode("utf-8")), sid, q=brief, extra=extra)
 
     def _visit(self, ref, level):
         """Put an opened crumb on the trail and save it for the views (trail.json, replaced whole)."""
@@ -1027,30 +1052,15 @@ class BreadcrumbsProvider(MemoryProvider):
     def on_delegation(self, task, result, *, child_session_id="", **kwargs):
         if self.slot is not None:
             self.slot.call("on_delegation", task, result, child_session_id=child_session_id, **kwargs)
-        got, root = None, ""
+        root = ""
         if self.family and self.writable and child_session_id:
-            got = self._child_car(child_session_id)
-            root = self._adopt_child(got) if got else ""
+            root = self._child_session(child_session_id)
         try:  # the record of a delegation must never fail it
-            self._worker_receipt(task, result, child_session_id, car=got["cid"] if got else "", root=root)
+            self._worker_receipt(task, result, child_session_id, root=root)
         except Exception as e:
             self._log("worker receipt failed: %r" % (e,))
         if self.family and self.writable:  # one offer for each child that ran, in task order (handles.py)
             handles.offer(self.session_id, task, self._handle_line(root))
-
-    def _adopt_child(self, got):
-        """The dial family: the child's CAR comes into this store as private crumbs (share.import_car, public=False).
-        Then crumb(root, level) opens the work of the child word for word, and crumb_find finds it. No export names a
-        private crumb and no hive peer sees it. Returns the id of the child's session crumb here, or "" when the import
-        failed: the CAR stays, the failure goes to provider.log, and a delegation never fails because of it."""
-        try:
-            from breadcrumbs.share import import_car
-            with self._lock:
-                roots = import_car(self.store, self.index, got["car"], public=False)
-        except Exception as e:
-            self._log("family: child %s: import failed: %s: %s" % (got["sid"], type(e).__name__, e))
-            return ""
-        return roots[0] if roots else ""
 
     def _handle_line(self, root):
         """The handle of the child's work here, as one line, for the result of delegate_task (handles.py). "" when
@@ -1064,19 +1074,27 @@ class BreadcrumbsProvider(MemoryProvider):
             self._log("family: handle of %s not made: %r" % (root, e))
             return ""
 
-    def _child_car(self, child_session_id):
-        """The dial family: the child's rows from state.db to its own store and a CAR (family.py). The call waits
-        for it, so the CAR exists when the delegate_task call returns. A failure goes to provider.log: the child's
-        work is still in state.db, and a delegation never fails because of it."""
+    def _child_session(self, child_session_id):
+        """The dial family: the child's session crumb in this store, its crumbs pointing at its rows of state.db
+        (hermes_ingest.session_import: no text is copied). The call waits for it, so crumb(root, level) opens the work
+        of the child when delegate_task returns. Returns the id of the session crumb, or "" (the failure goes to
+        provider.log: the child's work is still in state.db, and a delegation never fails because of it)."""
         try:
-            from .family import export_child
-            got = export_child(os.path.join(self._hermes_home(), "state.db"), self.root, child_session_id)
+            from .hermes_ingest import session_import
+            with self._lock:
+                got = session_import(os.path.join(self._hermes_home(), "state.db"), self.store, self.index, self.refs,
+                                     child_session_id)
+                if got:
+                    commit(self.store, self.refs, "main", [got[0]], "child " + child_session_id)
+                    self.store.flush()
+                    self.index.commit()
         except Exception as e:
             self._log("family: child %s: %s: %s" % (child_session_id, type(e).__name__, e))
-            return None
+            return ""
         if got is None:
             self._log("family: child %s: no rows to keep in state.db" % child_session_id)
-        return got
+            return ""
+        return got[0]
 
     # -- summaries (one background thread; the model runs outside the lock) ---------------
     def _queue_summaries(self, crumb_ids):

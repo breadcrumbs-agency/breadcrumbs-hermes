@@ -1,6 +1,7 @@
 """The worker receipt: on_delegation records a delegation, on the parent's side, as one "rcpt" crumb of the event
-"worker": the brief that the lead gave the child, the report that came back, the refs that each of them names, and
-the session ids. Hermes calls on_delegation once for each child, before the tool returns."""
+"worker": the refs that the brief and the report name, the session ids, and the head of the brief (meta.q). It keeps
+no text: the brief and the report are rows of state.db (the call of delegate_task and its result). Hermes calls
+on_delegation once for each child, before the tool returns."""
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import os
@@ -63,16 +64,15 @@ class WorkerTest(unittest.TestCase):
             rid = c.meta.get("prev") or None
         return out[::-1]
 
-    def test_one_delegation_gives_one_worker_receipt_with_the_brief_and_the_report(self):
+    def test_one_delegation_gives_one_worker_receipt_that_keeps_no_text(self):
         brief, report = "find the kettle in the notes", "it is on the top shelf"
+        blobs = len(self.p.store)
         self.p.on_delegation(brief, report, child_session_id="c1")
         ((rid, c),) = self.chain()
-        self.assertEqual((c.kind, c.meta["ev"], c.meta["sess"], c.meta["child"]), ("rcpt", "worker", "s1", "c1"))
-        text = self.p.zoom.render(rid, 1.0)
-        self.assertTrue(text.startswith("\u25b8 %s rcpt" % rid))
-        for part in (brief, report, "parent: s1", "child: c1"):
-            self.assertIn(part, text)
-        self.assertLess(text.index(brief), text.index(report))
+        self.assertEqual((c.kind, c.meta["ev"], c.meta["sess"], c.meta["child"], c.meta["q"]),
+                         ("rcpt", "worker", "s1", "c1", brief))
+        self.assertEqual((c.ranges, len(self.p.store)), ([], blobs + 1))  # the receipt crumb, and no text
+        self.assertTrue(self.p.zoom.render(rid, 1.0).startswith("\u25b8 %s rcpt" % rid))
 
     def test_the_refs_that_open_in_the_store_are_named_and_cited(self):
         brief, report = BRIEF % (self.old, self.turn, self.span), REPORT % self.turn
@@ -81,17 +81,11 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual((c.meta["named"], c.meta["cited"]), ([self.old, self.turn, self.span], [self.turn]))
         self.assertEqual(c.meta["items"], [self.old, self.turn, self.span])
         self.assertEqual(c.kids, [self.old, self.turn])  # the receipt links the crumbs; a span is a range
-        self.assertIn(self.span.split(":")[0], [r[0] for r in c.ranges])
-        text = self.p.zoom.render(rid, 1.0)  # the text keeps every word as written, the lookalikes too
-        for part in (brief, "Not 00000000, nor %s:0-2." % self.old, report):
-            self.assertIn(part, text)
+        self.assertEqual([r[0] for r in c.ranges], [self.span.split(":")[0]])
 
-    def test_the_car_and_the_root_id_are_kept_once_the_lead_holds_them(self):
-        rid = self.p._worker_receipt("find the kettle", "found it", "c1", car="bafycar", root=self.turn)
-        c = get_crumb(self.p.store, rid)
-        self.assertEqual((c.meta["car"], c.meta["root"]), ("bafycar", self.turn))
-        text = self.p.zoom.render(rid, 1.0)
-        self.assertIn("car: bafycar\nroot: %s\n" % self.turn, text)
+    def test_the_root_id_is_kept_once_the_lead_holds_it(self):
+        rid = self.p._worker_receipt("find the kettle", "found it", "c1", root=self.turn)
+        self.assertEqual(get_crumb(self.p.store, rid).meta["root"], self.turn)
 
     def test_a_read_only_agent_writes_no_receipt(self):
         q = self.make("subagent")

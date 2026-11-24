@@ -108,20 +108,14 @@ class ReceiptTest(Scenario):
         self.assertIn(self.p.zoom.render(self.p.session_crumb("s1"), 0.5), out)
         self.assertNotIn(self.p.zoom.render(self.p.session_crumb("s1"), 1.0), out)
 
-    def test_a_receipt_replays_the_text_the_model_saw_after_the_store_grows(self):
-        """Below level 1, the words of a text come from the index's counts, and the counts change as the store
-        grows. A receipt that rendered its items again would show another text than the model saw."""
-        turn = get_crumb(self.p.store, self.p.session_crumb("s1")).kids[0]  # below level 1 it shows key words
-        saw = json.loads(self.p.handle_tool_call("mcp__crumb", {"id": turn, "level": 0.7}))["text"]
-        rid = self.p.refs.get("rcpt-" + self.p.session_id)  # the receipt of that open
-        for i in range(40):  # the words of this turn become common in the store
-            self.p.sync_turn("steep green tea in the kettle, bike chain on the small cog %d" % i,
-                             "steep the tea in the kettle two minutes, replace the worn chain", session_id="g%d" % i)
-        self.p.shutdown()
-        self.p = BreadcrumbsProvider()  # a restart: the counts are read again
-        self.p.initialize("s9", hermes_home=self.tmp.name, platform="cli", agent_context="primary")
-        self.assertNotEqual(self.p.zoom.render(turn, 0.7), saw, "the store must drift, or this test proves nothing")
-        self.assertIn(saw, self.p.zoom.render(rid, 1.0))
+    def test_a_receipt_keeps_no_text_and_level_one_renders_its_items_again(self):
+        """A receipt is the refs and their levels: the text that the model saw is rendered again from them."""
+        for c in self.r:
+            self.assertNotIn("ctx", c.meta)
+            self.assertTrue(all(r[0] in [i.split(":")[0] for i in c.meta["items"]] for r in c.ranges))
+        out = self.p.zoom.render(self.rcpt[1], 1.0)
+        self.assertEqual(out.split("\n", 1)[1], "".join(self.p.zoom.render(r, lv) for r, lv in
+                                                         zip(self.r[1].meta["items"], self.r[1].meta["lv"])))
 
     def test_a_find_receipt_holds_the_handles_and_the_exact_lines(self):
         m = self.r[2].meta

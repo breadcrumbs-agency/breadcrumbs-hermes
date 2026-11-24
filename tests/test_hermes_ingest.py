@@ -8,6 +8,8 @@ import unittest
 from unittest import mock
 
 from breadcrumbs.crumbs import get_crumb
+from breadcrumbs.lines import SOURCE_GONE, get_text, put_text, split_lines
+from breadcrumbs_hermes import hermes_ingest
 from breadcrumbs_hermes.hermes_ingest import ingest_state_db
 from breadcrumbs.history import Refs
 from breadcrumbs.index import Index
@@ -73,8 +75,8 @@ class HermesIngestTest(unittest.TestCase):
         self.ingest()
         blobs = len(self.store)
         rows = self.index.db.execute("SELECT count(*) FROM rows").fetchone()[0]
-        self.ingest()
-        self.assertEqual(len(self.store), blobs + 1)  # only the new commit crumb
+        self.assertEqual(self.ingest()["sessions"], 0)  # every session crumb is at its last row: nothing is read
+        self.assertEqual(len(self.store), blobs)
         self.assertEqual(self.index.db.execute("SELECT count(*) FROM rows").fetchone()[0], rows)
 
     def test_source_db_is_opened_read_only(self):
@@ -190,6 +192,78 @@ class StepIngestTest(unittest.TestCase):
         self.assertEqual(self.index.search("notes.txt read_file")[0][0], self.crumbs[1][0])
 
 
+class ImportTest(HermesIngestTest):
+    """state.db keeps the text: the store keeps the spine of each row's text and its locator, no line of it."""
+
+    def lines_of(self, text):
+        return [self.store.find(line) for line in split_lines(text.encode("utf-8"))]
+
+    def test_no_line_of_a_row_is_copied_and_each_text_names_its_row(self):
+        self.ingest()
+        self.assertEqual(self.lines_of("I wrote crc32c.py with RFC 3720 vectors"), [None])
+        doc = get_crumb(self.store, self.index.search("RFC 3720 vectors")[0][0]).ranges[0][0]
+        self.assertEqual(self.store.locator(doc), "hermes:2")  # state.db beside the store: the locator needs no path
+        self.assertEqual(hermes_ingest.rows(sqlite3.connect(self.db), "s1", db="/x/state.db")[0]["loc"], "hermes:1@/x/state.db")
+
+    def test_new_rows_of_a_session_come_after_its_turns_and_only_they_are_read(self):
+        self.ingest()
+        before = leaves(self.store, self.refs.get("sess-s1"), kind=None)
+        con = sqlite3.connect(self.db)
+        con.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES ('s1', 'user', 'and the tests?', 104)")
+        con.commit()
+        con.close()
+        with mock.patch("breadcrumbs_hermes.hermes_ingest.rows", wraps=hermes_ingest.rows) as read:
+            self.assertEqual((self.ingest()["sessions"], self.ingest()["sessions"]), (1, 0))
+        self.assertEqual([c.kwargs.get("after") for c in read.call_args_list], [3])
+        after = leaves(self.store, self.refs.get("sess-s1"), kind=None)
+        self.assertEqual(after[:-1], before)
+        self.assertEqual(Zoom(self.store).render(after[-1], 1.0).splitlines()[-1], "and the tests?")
+
+    def test_a_row_that_state_db_dropped_reads_as_source_gone_and_its_crumb_stays(self):
+        self.ingest()
+        turn = self.index.search("RFC 3720 vectors")[0][0]
+        con = sqlite3.connect(self.db)
+        con.execute("DELETE FROM messages WHERE id = 2")
+        con.commit()
+        con.close()
+        hermes_ingest._TEXTS.clear()
+        out = Zoom(self.store).render(turn, 1.0)
+        self.assertIn(SOURCE_GONE.decode(), out)
+        self.assertNotIn("RFC 3720", out)
+
+    def test_relocate_drops_the_copies_of_a_store_from_before_and_keeps_every_id(self):
+        home = os.path.join(self.tmp.name, "old")
+        old = Store(os.path.join(home, "store"))
+        index, refs = Index(os.path.join(home, "index.db")), Refs(os.path.join(home, "refs"))
+        def copied(r, scrub, db=None):  # the store of a release before: every text copied
+            row = _ROW(r, scrub, db)
+            return row and dict(row, loc=None)
+        with mock.patch.object(hermes_ingest, "_row", copied):
+            ingest_state_db(self.db, old, index, refs)
+        mine = put_text(old, b"a summary that only this store holds\n")
+        ids = set(old.ids())
+        index.close()
+        old.close()
+        copy = Store(os.path.join(home, "store"))
+        self.assertIsNotNone(copy.find(b"I wrote crc32c.py with RFC 3720 vectors"))
+        copy.close()
+        (dropped,) = hermes_ingest.relocate([os.path.join(home, "store")], self.db).values()
+        self.assertGreater(dropped, 0)
+        self.assertEqual(hermes_ingest.relocate([os.path.join(home, "store")], self.db), {})  # once
+        new = Store(os.path.join(home, "store"))
+        try:
+            self.assertEqual(len(ids - set(new.ids())), dropped)
+            self.assertIsNone(new.find(b"I wrote crc32c.py with RFC 3720 vectors"))
+            sess = refs.get("sess-s1")
+            self.assertIn("I wrote crc32c.py with RFC 3720 vectors", Zoom(new).render(sess, 1.0))
+            self.assertEqual(get_text(new, mine), b"a summary that only this store holds\n")
+        finally:
+            new.close()
+
+
+_ROW = hermes_ingest._row
+
+
 class FamilyIngestTest(unittest.TestCase):
     """A child session names its parent: the session crumb keeps parent_session_id and source in its meta.
     A state.db whose sessions table lacks a column ingests as before."""
@@ -225,7 +299,10 @@ class FamilyIngestTest(unittest.TestCase):
         return ingest_state_db(db or self.db, self.store, self.index, self.refs)
 
     def meta(self, sid):
-        return get_crumb(self.store, self.refs.get("sess-" + sid)).meta
+        """The session crumb's meta without "upto" (the last message id that it covers: see ImportTest)."""
+        m = dict(get_crumb(self.store, self.refs.get("sess-" + sid)).meta)
+        m.pop("upto")
+        return m
 
     def test_two_children_name_their_parent(self):
         self.ingest()
@@ -255,11 +332,11 @@ class FamilyIngestTest(unittest.TestCase):
         self.assertEqual(self.meta("s1"), {"sess": "s1", "source": "cli"})
         self.assertEqual(self.meta("s2"), {"sess": "s2"})  # a NULL value gives no key
 
-    def test_ingest_twice_adds_only_the_commit(self):
+    def test_ingest_twice_adds_nothing(self):
         self.ingest()
         blobs = len(self.store)
         self.ingest()
-        self.assertEqual(len(self.store), blobs + 1)
+        self.assertEqual(len(self.store), blobs)
 
 
 class PlainTextTest(unittest.TestCase):

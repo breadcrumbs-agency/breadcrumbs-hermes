@@ -10,6 +10,7 @@ import unittest
 os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start the real model
 
 from breadcrumbs import ace_core
+from breadcrumbs.crumbs import get_crumb
 from breadcrumbs_hermes import ace
 
 
@@ -162,9 +163,13 @@ class LayerTest(unittest.TestCase):
             line = next(x for x in layer.split("\n") if ref in x)
             a, b = map(int, re.search(r"\| turns (\d+)-(\d+) \|", line).groups())
             members = req[1 + 4 * (a - 1):1 + 4 * b]  # chat(): four messages a turn
-            self.assertEqual(exact, "".join("%s %s %s\n%s\n" % (ace.GAP, ace.ref_of(self.engine.store, ace.crumb_text(m)), role,
-                                                                ace.crumb_text(m))
-                                            for m, role in zip(members, ["user", "call", "tool", "assistant"] * (b - a + 1))))
+            group = get_crumb(self.engine.store, ref.split(":")[0])  # a span over its messages' texts: no text of its own
+            self.assertEqual(group.kind, "span")
+            self.assertEqual(["%s:%d-%d" % tuple(r) for r in group.ranges],
+                             [ace.ref_of(self.engine.store, ace.crumb_text(m)) for m in members])
+            at = 0
+            for m in members:  # level 1 of the group: each message's exact text, in order
+                at = exact.index(ace.crumb_text(m), at) + len(ace.crumb_text(m))
         self.assertGreater(groups, 0)
         self.assertGreater(len(refs) - groups, 20)
 
