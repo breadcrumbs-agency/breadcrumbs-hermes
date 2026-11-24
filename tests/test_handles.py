@@ -1,14 +1,18 @@
-"""The dial `family`, second half (breadcrumbs/handles.py and BreadcrumbsProvider.on_delegation).
+"""The dial `family` (breadcrumbs/handles.py and BreadcrumbsProvider.on_delegation).
 
-At on_delegation the CAR of a delegate_task child comes into the lead's own store as private crumbs, so the lead opens the
-exact text of the child by id. The hook transform_tool_result then adds one handle line for each child to the result of
-the delegate_task call, in the entry of that child, so the model learns the id. With the dial off nothing of this runs.
+At on_delegation the session of a delegate_task child comes into the lead's own store from state.db
+(hermes_ingest.session_import): crumbs that point at the child's rows, no copy of its text, so the lead opens the exact
+text of the child by id. The hook transform_tool_result then adds one handle line for each child to the result of the
+delegate_task call, in the entry of that child, so the model learns the id. With the dial off nothing of this runs.
 
-The fixture state.db is the one of test_family: a parent p1 and its children c1, c2 and c3 (c3 keeps no turn)."""
+The fixture state.db has one parent (p1), three children of it (c1, c2, c3) and a session that is nobody's child (x1).
+c3 has one tool row with an empty result, so a store keeps no turn of it."""
+from _hermes_fts import messages_fts
 import _hermes_scrub  # noqa: F401  (state.db is read through agent.redact: a stand-in where Hermes is absent)
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from unittest import mock
@@ -18,9 +22,38 @@ os.environ.setdefault("BREADCRUMBS_SUMMARIZE", "0")  # unit tests never start th
 from breadcrumbs import handles
 from breadcrumbs.crumbs import get_crumb
 from breadcrumbs_hermes.hermes import BreadcrumbsProvider, register_handles
-from breadcrumbs.share import export_car, read_car
+from breadcrumbs.share import export_car
 from breadcrumbs_hermes.slot import Slot
-from test_family import make_state_db
+
+CALL = json.dumps([{"id": "call_1", "type": "function",
+                    "function": {"name": "read_file", "arguments": json.dumps({"path": "kettle.txt"})}}])
+
+
+def make_state_db(path):
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT, parent_session_id TEXT, title TEXT,"
+               " started_at REAL)")
+    db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
+               " content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL)")
+    messages_fts(db)
+    db.executemany("INSERT INTO sessions VALUES (?,?,?,?,?)",
+                   [("p1", "cli", None, "the parent", 100), ("c1", "subagent", "p1", None, 110),
+                    ("c2", "subagent", "p1", "shelf", 111), ("c3", "subagent", "p1", None, 112),
+                    ("x1", "cli", None, "other", 120)])
+    db.executemany("INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp)"
+                   " VALUES (?,?,?,?,?,?,?)",
+                   [("p1", "user", "split the job in two", None, None, None, 101),
+                    ("c1", "user", "measure the kettle", None, None, None, 111),
+                    ("c1", "assistant", "", None, CALL, None, 112),
+                    ("c1", "tool", "kettle at eighty degrees", "call_1", None, "read_file", 113),
+                    ("c1", "assistant", "The kettle is at eighty degrees.", None, None, None, 114),
+                    ("c2", "user", "check the shelf", None, None, None, 112),
+                    ("c2", "assistant", "The shelf is made of oak.", None, None, None, 113),
+                    ("c3", "tool", "{}", "call_2", None, "read_file", 114),
+                    ("x1", "user", "walrus chatter that belongs to no child", None, None, None, 121)])
+    db.commit()
+    db.close()
+
 
 KETTLE, SHELF = "measure the kettle", "check the shelf"  # the goals of c1 and c2 in the fixture
 LINE = "\u25b8"
@@ -94,13 +127,14 @@ class ImportTest(FamilyHome):
         self.assertNotIn("oak", shown)  # nothing of c2
         self.assertNotIn("split the job", shown)  # nothing of the parent
 
-    def test_the_worker_receipt_holds_the_cid_of_the_car_and_the_root_id(self):
+    def test_the_worker_receipt_holds_the_root_id_and_no_text_of_the_child_is_copied(self):
         self.delegate(KETTLE, "c1")
         ((rid, c),) = self.receipts()
-        car = os.path.join(self.root, "children", "c1", "share", "c1.car")
-        self.assertEqual(c.meta["car"], read_car(car)[0][0])  # the CID of the file that was imported
-        self.assertEqual(c.meta["child"], "c1")
-        self.assertIn("car: %s\nroot: %s\n" % (c.meta["car"], c.meta["root"]), self.open(rid))
+        self.assertEqual((c.meta["child"], "car" in c.meta), ("c1", False))
+        for line in (b"kettle at eighty degrees", b"The kettle is at eighty degrees."):
+            self.assertIsNone(self.p.store.find(line))  # state.db keeps the text
+        self.assertEqual(get_crumb(self.p.store, c.meta["root"]).meta["sess"], "c1")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "children")))
 
     def test_the_imported_crumbs_are_private_and_no_search_or_export_of_a_peer_names_them(self):
         self.delegate(KETTLE, "c1")
@@ -127,7 +161,7 @@ class ImportTest(FamilyHome):
         self.delegate(KETTLE, "c1")
         self.delegate(KETTLE, "c1")
         (_, first), (_, second) = self.receipts()
-        self.assertEqual((first.meta["root"], first.meta["car"]), (second.meta["root"], second.meta["car"]))
+        self.assertEqual(first.meta["root"], second.meta["root"])
 
     def test_each_child_has_its_own_root(self):
         self.delegate(KETTLE, "c1")
@@ -138,19 +172,17 @@ class ImportTest(FamilyHome):
         self.assertIn("oak", self.open(second.meta["root"]))
 
     def test_a_failed_import_is_logged_and_the_delegation_goes_on(self):
-        with mock.patch("breadcrumbs.share.import_car", side_effect=ValueError("boom")):
+        with mock.patch("breadcrumbs_hermes.hermes_ingest.session_import", side_effect=ValueError("boom")):
             self.delegate(KETTLE, "c1")
         ((rid, c),) = self.receipts()
-        self.assertIn("family: child c1: import failed: ValueError: boom", self.log())
+        self.assertIn("family: child c1: ValueError: boom", self.log())
         self.assertNotIn("root", c.meta)  # the work did not come in: the receipt says only what is true
-        self.assertEqual(c.meta["car"], read_car(os.path.join(self.root, "children", "c1", "share", "c1.car"))[0][0])
         self.assertIsNone(self.hook([KETTLE], self.result({})))  # and no line goes to the model
 
     def test_a_child_that_keeps_no_turn_leaves_a_receipt_and_no_root(self):
         self.delegate("a task with no rows", "c3")
         ((rid, c),) = self.receipts()
-        self.assertEqual((c.meta["child"], "car" in c.meta, "root" in c.meta), ("c3", False, False))
-        self.assertFalse(os.path.exists(os.path.join(self.root, "children")))
+        self.assertEqual((c.meta["child"], "root" in c.meta), ("c3", False))
 
 
 class DialOffTest(FamilyHome):
@@ -159,8 +191,7 @@ class DialOffTest(FamilyHome):
     def test_nothing_comes_in_and_no_line_is_offered(self):
         self.delegate(KETTLE, "c1")
         ((rid, c),) = self.receipts()  # the worker receipt (H10) is not the dial's
-        self.assertEqual(("car" in c.meta, "root" in c.meta), (False, False))
-        self.assertFalse(os.path.exists(os.path.join(self.root, "children")))
+        self.assertNotIn("root", c.meta)
         self.assertEqual(len(handles._offers), 0)
         self.assertIsNone(self.hook([KETTLE], self.result({})))
 
@@ -172,7 +203,7 @@ class ReadOnlyTest(FamilyHome):
         self.assertTrue(self.p.family)
         self.assertFalse(self.p.writable)
         self.delegate(KETTLE, "c1")
-        self.assertFalse(os.path.exists(os.path.join(self.root, "children")))
+        self.assertIsNone(self.p.refs.get("sess-c1"))
         self.assertEqual(len(handles._offers), 0)
 
 

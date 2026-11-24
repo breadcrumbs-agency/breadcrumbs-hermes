@@ -25,8 +25,10 @@ TARGET_TOKENS, FOLD_TO, FOLD_CAP and RATCHET are defaults: each model has its ow
 Hermes's threshold and the model's ace_ceiling (Claude Haiku 5.5: 94,000 built in, from the 100,000 prompt
 tokens where its price steps up); work tapers it back to the band by the fold share (_taper).
 
-The layer is a tree: groups of GROUP_TURNS turns, then one crumb per message. Each message is stored
-exactly (put_text: the same bytes give the same id, so a text that comes back is one crumb, marked x2).
+The layer is a tree: groups of GROUP_TURNS turns, then one crumb per message. A message that state.db holds is no
+copy: its crumb is the spine of the row's text and the row's locator (place, hermes_ingest.source), so the same row
+gives the same id, and a text that comes back is one crumb, marked x2. A message that state.db does not hold as sent
+(an injected context, a turn not yet written) is stored through Hermes's scrub.
 The layer shows each crumb at a level from 0 (its handle) to 1 (its exact text), with the zoom's distinct
 and meaningful words in between: the meat of it. The layer has a finite size: LAYER_SHARE of a
 fold, and at a target of SMALL_TARGET tokens or less only SMALL_SHARES[1], because there exact text
@@ -46,6 +48,7 @@ With either setting missing, ACE does not register and the profile keeps Hermes'
 
 import os
 import re
+import sqlite3
 
 try:  # inside Hermes
     from agent.context_engine import ContextEngine
@@ -144,6 +147,53 @@ class Ace(Engine, ContextEngine):
         if ContextEngine is not object:
             super().on_session_reset()
         self.reset_session()
+
+    def place(self, m, text):
+        """(text, locator) of a request message: the text of its row of state.db (hermes_ingest.rows, through Hermes's
+        scrub) and "hermes:<message id>" when this session has a row whose text is this one; else the text through
+        the scrub, with no locator (it is stored)."""
+        rows = self._rows()
+        hit = rows.get((m.get("role"), text)) if rows is not None else None
+        if hit:
+            return hit
+        scrub = self._scrub()
+        return (scrub(text) if scrub and text else text), None
+
+    def _scrub(self):
+        if not hasattr(self, "_egress"):
+            try:
+                from .hermes_ingest import egress_scrub
+                self._egress = egress_scrub()
+            except RuntimeError:
+                self._egress = None
+        return self._egress
+
+    def _rows(self):
+        """{(role, text as Hermes sent it): (text through the scrub, locator)} of this session's rows of state.db,
+        read again only for the rows after the last one read."""
+        db = os.path.join(self.home_folder(), "state.db")
+        scrub = self._scrub()
+        if not self.session or scrub is None or not os.path.exists(db):
+            return None
+        sid, cache, upto = getattr(self, "_row_cache", (None, {}, 0))
+        if sid != self.session:
+            cache, upto = {}, 0
+        try:
+            from breadcrumbs.ingest import row_text
+            from .hermes_ingest import rows
+            con = sqlite3.connect("file:%s?mode=ro" % os.path.abspath(db), uri=True)
+            try:
+                raw = rows(con, self.session, scrub=lambda t: t, after=upto)
+                kept = rows(con, self.session, scrub=scrub, after=upto)
+            finally:
+                con.close()
+        except (sqlite3.Error, ValueError):
+            return cache
+        for r, k in zip(raw, kept):
+            cache.setdefault((r["role"], row_text(r)), (row_text(k), k["loc"]))
+            upto = max(upto, int(k["loc"].split(":")[1].split("@")[0]))
+        self._row_cache = (self.session, cache, upto)
+        return cache
 
     def clone_for_agent(self):  # a fresh instance: the store opens per agent
         return Ace(self.target_tokens if self._given else None, self._name)

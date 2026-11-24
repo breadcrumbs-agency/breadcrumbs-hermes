@@ -296,5 +296,40 @@ class HorizonProviderTest(unittest.TestCase):
         self.assertLess(out.index("charlie two"), out.index("charlie one"))
 
 
+class AdviceTest(unittest.TestCase):
+    """A store from before 0.6.0 (blobs, no "format") is not converted at the start: the provider advises the
+    conversion, once a session, and the store opens as it is."""
+
+    def test_an_old_store_gets_the_advice_and_a_new_one_none(self):
+        from breadcrumbs.lines import put_text
+        from breadcrumbs.store import Store
+        from breadcrumbs_hermes import hermes as hermes_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(os.path.join(tmp, "breadcrumbs", "store"))
+            put_text(store, b"copied text\n")
+            store.close()
+            hooks = {}
+            ctx = type("Ctx", (), {"register_hook": lambda self, name, fn: hooks.setdefault(name, fn)})()
+            p = BreadcrumbsProvider()
+            hermes_mod.register_advice(ctx, p)
+            p.initialize("s1", hermes_home=tmp, platform="cli", agent_context="primary")
+            try:
+                self.assertEqual(p.advice, "")  # a store this release made has its format
+            finally:
+                p.shutdown()
+            os.remove(os.path.join(tmp, "breadcrumbs", "store", "format"))
+            p = BreadcrumbsProvider()
+            hooks.clear()
+            hermes_mod.register_advice(ctx, p)
+            p.initialize("s2", hermes_home=tmp, platform="cli", agent_context="primary")
+            try:
+                self.assertIn("convert-hermes", p.advice)
+                self.assertIn("convert-hermes", hooks["pre_llm_call"](is_first_turn=True)["context"])
+                self.assertIsNone(hooks["pre_llm_call"](is_first_turn=False))
+                self.assertIsNotNone(p.store.find(b"copied text\n"))  # nothing converted at the start
+            finally:
+                p.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main()

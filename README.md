@@ -80,16 +80,6 @@ This entry was built this way. Each bar is one Hermes session (Sonnet 5.5) on it
 dot is a fold of that session's context. In all: about 1,900 model requests, about 100 folds, and 91.5% of the
 input tokens from the cache. The numbers come from the session table and the ACE log; no text of a chat is shown.
 
-## FIVE CHILD AGENTS, ONE PARENT, ZERO BAD BLOCKS!
-
-`[IPFS] CHILD → CAR → CID → IMPORT · THE SAME ROOT ID IN BOTH STORES · VERIFY: 0 BAD`
-
-![The terminal of the run: each child's session becomes a CAR file with a CID, and the parent imports it](https://raw.githubusercontent.com/breadcrumbs-agency/hermes-breadcrumb-plugin/e98ac8f963abdc1de65d70474c2fc4dadb34a8e9/docs/media/run-family.gif)
-
-A lead agent and five child agents on the demo profile. The session of each child leaves as one CAR file with a
-CID. The parent imports it and holds the same root id, and `verify` finds 0 bad blocks. The lead's answer cites an
-id from each of the five.
-
 ## THREE PROGRAMS, ONE LINE ID, NO LOCK WAIT!
 
 `[SYNC] CLAUDE CODE · OPENCODE · HERMES → LINE 12 = 1721f9ac IN EVERY STORE · 0.110 ms OF LOCKS IN ALL`
@@ -465,7 +455,7 @@ by ACE's estimate. The estimate read at most 5.9% under the model's count on a l
 | `budget_max` | 2,000 | 1 or more |  | The largest recall budget that the controller sets, in tokens. |
 | `overflow_low` | 0.02 | 0 to 1 |  | The controller raises the budget when fewer turns than this share overflow. |
 | `overflow_high` | 0.05 | 0 to 1 |  | The controller lowers the budget when more turns than this share overflow. |
-| `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only), writes them to the child's own store (the folder children/ID of the breadcrumbs folder), and exports them there as a CAR file. It then imports the CAR into the profile's own store as private crumbs. When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
+| `family` | false | true or false |  | After a delegation, the provider reads the child's session rows from state.db (read-only) and adds the child's session to the profile's store as private crumbs that point at those rows (no text is copied). When the result of delegate_task holds the entry of the child, it adds the handle of the child's session to that entry. Off: nothing is read, nothing is written and no result changes. |
 | `update_ms` | 2,000 | 200 to 60000 | `BREADCRUMBS_UPDATE_MS` | The interval in milliseconds at which the live viewers (the explorer page of /viz) poll the store: the map, the context and the trail; the measures poll at three times it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
 | `live` | true | true or false | `BREADCRUMBS_LIVE` | Whether the live viewers (the explorer page of /viz) ask the store every update_ms which of its data changed (its index, its logs, this chat's config) and reload only that part. Off: the page loads once and reloads by hand. Read from the top level of config.json and from the environment, as update_ms is. |
 | `takeover` | true | true or false | `BREADCRUMBS_TAKEOVER` | Whether the plugin takes over the context of a Hermes profile whose memory provider it is: when it loads and context.engine is unset or Hermes's own compressor, it selects itself (ACE folds the context, Hermes's own compaction stands down) and turns off the Hermes compaction extras that overlap it (idle compaction, proactive pruning, prepared summaries, native Responses compaction). Off: the plugin never changes the context settings. `compaction off` sets it false and `compaction on` clears it. Read from the top level of config.json and from the environment. A value of a 'models' entry is not used here. |
@@ -529,14 +519,15 @@ exact crumbs (level 1, or an `id:a-b` range), not a summary in the agent's own w
 memory tools, so the handbook gives it `bc`, which only reads the store.
 
 When a child ends, Hermes tells the lead's provider (`on_delegation`), and breadcrumbs writes one `worker`
-receipt in the lead's chain: the brief, the report, the refs that each one names (those that open in the
-store), and both session ids. `crumb(RECEIPT, 1)` gives the brief and the report word for word. A `worker`
-receipt is a name, not a copy: it adds no bar to the Gantt chart and spends none of the turn budget.
+receipt in the lead's chain: the refs that the brief and the report name (those that open in the store), both
+session ids, and the head of the brief. The brief and the report themselves stay in `state.db` (the call of
+`delegate_task` and its result). A `worker` receipt is a name, not a copy: it adds no bar to the Gantt chart and
+spends none of the turn budget.
 
 With the dial `family` on (it is off by default), the work of the child also comes into the lead's store. The
-provider reads the rows of the child from `state.db`, exports them as a CAR file, and imports that file as
-**private** crumbs: `crumb(ROOT, level)` opens the child's turns word for word, `crumb_find` finds them, and no
-export and no hive peer sees them. The `worker` receipt then holds the CID of the CAR and the id of ROOT. The hook
+provider reads the rows of the child from `state.db` and adds them as **private** crumbs that point at those rows:
+`crumb(ROOT, level)` opens the child's turns word for word, `crumb_find` finds them, and no export and no hive peer
+sees them. The `worker` receipt then holds the id of ROOT. The hook
 `transform_tool_result` puts one handle line for each child in the result of `delegate_task`, in the entry of that
 child under the key `breadcrumbs`; the result stays valid JSON, and only the entries of children change.
 A result has entries when Hermes runs the call to its end: a call from a subagent, a gateway session with
@@ -601,16 +592,23 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
 ## What it does on your machine
 
 - It keeps its data in `$HERMES_HOME/breadcrumbs/`, the store of the active profile.
-- It keeps each user, assistant and tool turn word for word, append-only. Hermes hands a turn to the provider
-  after Hermes has masked secrets in it (Hermes's own scrubber, `_redact_for_provider`). breadcrumbs masks
-  nothing itself, so a secret that the scrubber misses is kept. The context engine keeps the text of the
-  messages that it folds (a tool result and the arguments of a call as plain text).
-- `state.db` keeps typed text as typed: Hermes masks secrets only on the way to a provider. So every text that
-  breadcrumbs reads from `state.db` (the import at session end and before `/viz`, `ingest-hermes`, the dial
-  `family`) goes through that same scrub (`agent.redact.redact_for_egress`) before it is hashed and stored.
-  Without Hermes importable, nothing of `state.db` is read.
-- It keeps the brief and the report of each `delegate_task` child word for word, in one `worker` receipt, as
-  Hermes masked them before it handed them over (`on_delegation`). A secret that the scrubber misses is kept.
+- It keeps no copy of what Hermes keeps. A turn, a tool result or a call that is a row of `state.db` becomes a
+  crumb that holds the spine of the row's text (the CRC32C of each line) and the row's id, and no line of it:
+  `crumb(ID, level)` reads the text from `state.db` (read-only), through Hermes's scrub
+  (`agent.redact.redact_for_egress`), so a key typed into a chat reads masked and is in no file of breadcrumbs.
+  A row that Hermes deletes reads as "(source gone ...)", and its crumb stays. The session end and `sync_turn`
+  read only the rows after the last one that a session crumb covers. Without Hermes importable, nothing of
+  `state.db` is read. A crumb of such a row keeps its role as its title, no word of its text: a view shows
+  the first line as `state.db` gives it. Its words are in Hermes's own full-text index (`messages_fts`), not in
+  `index.db`: `crumb_find` asks that index for them, and the cue words and the zoom count them there.
+- It keeps text of its own only where nothing else holds it: the summaries that a model writes, a turn that
+  Hermes handed over and that `state.db` does not hold, and a message of a request that is in no row (an
+  injected context), each as Hermes masked it. A receipt and a fold keep ids and levels, no text.
+- A store from a release before 0.6.0 holds copies (a store without the file `format`). It opens as it is, and
+  breadcrumbs advises its conversion: in `provider.log`, in `/scope`, and once on the first turn of a chat.
+  `python -m breadcrumbs convert-hermes PROFILE`, with Hermes stopped, drops the copies of the texts that
+  `state.db` holds, and their words in `index.db`, once for each store of that profile. Every id and every crumb
+  stay. It refuses a store that is open anywhere.
 - By default, breadcrumbs makes no network calls. It reads no credential files. It sends no telemetry. A
   slotted provider (see the slot) works as it did before, with its own network calls.
 - It replaces no class and no function of Hermes.
@@ -639,12 +637,11 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
   `memory.<name>` in `config.yaml`. `python -m breadcrumbs slot PROFILE` sets `memory.provider` through
   `hermes config set`.
 - The CLI command `ingest-hermes PROFILE` reads that profile's `state.db` (read-only). The memory provider
-  reads it when a session ends and before `/viz` opens (the import into the profile's store), and when the
+  reads it after each turn, when a session ends and before `/viz` opens (the import into the profile's store), to
+  open a crumb and to search (`messages_fts`), and when the
   dial `family` is on (it is off by default). With the dial on,
   after a delegation, the provider reads the child's session rows from `state.db`, read-only. It reads only
-  the rows of that child. It writes them, through Hermes's scrub, to the child's own store
-  (`$HERMES_HOME/breadcrumbs/children/<child session id>/`) and exports them there as a CAR file. Then it
-  imports that CAR file into the store of this profile as private crumbs. The CAR file stays on the machine.
+  the rows of that child, and adds them to the store of this profile as private crumbs that point at them.
 - The hook `transform_tool_result` returns at once for every tool but `delegate_task`, and for `delegate_task`
   while the dial `family` is off. With the dial on, it reads the result of each `delegate_task` call and adds one
   line to the entry of each child that it kept: the handle of that child's session. It changes nothing else, and
