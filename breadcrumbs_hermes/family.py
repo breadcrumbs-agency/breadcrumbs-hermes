@@ -22,7 +22,7 @@ import os
 import re
 import shutil
 
-from .hermes_ingest import ROLES, rows as session_rows
+from .hermes_ingest import ROLES, egress_scrub, rows as session_rows
 from breadcrumbs.history import Refs
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import session
@@ -68,15 +68,17 @@ def export_child(db_path, root, sid, connect=None):
 
 
 def _stage(conn, sid):
-    """(title, the rows of session sid that a store keeps, as ingest.put_rows takes them), or None when the session has
-    no such row. The rows are in memory: the caller closes state.db."""
-    rows = session_rows(conn, sid, ROLES, OPTIONAL)
+    """(title, the rows of session sid that a store keeps, as ingest.put_rows takes them), each text through Hermes's
+    scrub (hermes_ingest.egress_scrub), or None when the session has no such row. The rows are in memory: the caller
+    closes state.db."""
+    scrub = egress_scrub()
+    rows = session_rows(conn, sid, ROLES, OPTIONAL, scrub=scrub)
     if not rows:
         return None
     title = ""
     if "title" in {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}:
         row = conn.execute("SELECT COALESCE(title, '') FROM sessions WHERE id = ?", (sid,)).fetchone()
-        title = row[0] if row else ""
+        title = scrub(row[0]) if row and row[0] else ""
     return title, rows
 
 

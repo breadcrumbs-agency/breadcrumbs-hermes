@@ -604,8 +604,11 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
 - It keeps each user, assistant and tool turn word for word, append-only. Hermes hands a turn to the provider
   after Hermes has masked secrets in it (Hermes's own scrubber, `_redact_for_provider`). breadcrumbs masks
   nothing itself, so a secret that the scrubber misses is kept. The context engine keeps the text of the
-  messages that it folds (a tool result and the arguments of a call as plain text). `ingest-hermes` copies the
-  user, assistant and tool rows of `state.db` as Hermes stored them.
+  messages that it folds (a tool result and the arguments of a call as plain text).
+- `state.db` keeps typed text as typed: Hermes masks secrets only on the way to a provider. So every text that
+  breadcrumbs reads from `state.db` (the import at session end and before `/viz`, `ingest-hermes`, the dial
+  `family`) goes through that same scrub (`agent.redact.redact_for_egress`) before it is hashed and stored.
+  Without Hermes importable, nothing of `state.db` is read.
 - It keeps the brief and the report of each `delegate_task` child word for word, in one `worker` receipt, as
   Hermes masked them before it handed them over (`on_delegation`). A secret that the scrubber misses is kept.
 - By default, breadcrumbs makes no network calls. It reads no credential files. It sends no telemetry. A
@@ -636,9 +639,10 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
   `memory.<name>` in `config.yaml`. `python -m breadcrumbs slot PROFILE` sets `memory.provider` through
   `hermes config set`.
 - The CLI command `ingest-hermes PROFILE` reads that profile's `state.db` (read-only). The memory provider
-  does not read it, except when the dial `family` is on (it is off by default). With the dial on,
+  reads it when a session ends and before `/viz` opens (the import into the profile's store), and when the
+  dial `family` is on (it is off by default). With the dial on,
   after a delegation, the provider reads the child's session rows from `state.db`, read-only. It reads only
-  the rows of that child. It writes them, as Hermes stored them, to the child's own store
+  the rows of that child. It writes them, through Hermes's scrub, to the child's own store
   (`$HERMES_HOME/breadcrumbs/children/<child session id>/`) and exports them there as a CAR file. Then it
   imports that CAR file into the store of this profile as private crumbs. The CAR file stays on the machine.
 - The hook `transform_tool_result` returns at once for every tool but `delegate_task`, and for `delegate_task`
