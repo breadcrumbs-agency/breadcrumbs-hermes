@@ -1,3 +1,4 @@
+from _hermes_fts import messages_fts
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import _full_view  # noqa: F401  (the viewer shows level 4 here: these read the whole text)
 import calendar
@@ -459,6 +460,7 @@ def state_db(path, sessions, usage, secret=SECRET):
                "handoff_platform TEXT, handoff_error TEXT)")
     db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, tool_calls TEXT, "
                "api_content TEXT, timestamp REAL)")
+    messages_fts(db)
     db.execute("CREATE TABLE session_model_usage (session_id TEXT, model TEXT, billing_provider TEXT, billing_base_url TEXT, "
                "billing_mode TEXT, task TEXT, api_call_count INTEGER, input_tokens INTEGER, output_tokens INTEGER, "
                "cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER, estimated_cost_usd REAL, "

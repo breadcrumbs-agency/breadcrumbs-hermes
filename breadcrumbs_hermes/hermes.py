@@ -136,6 +136,22 @@ def register_plugin(ctx, provider):
     workdir.register(ctx, provider)
     usage_log.register(ctx)
     register_handles(ctx)
+    register_advice(ctx, provider)
+
+
+ADVICE_HEAD = "[breadcrumbs: tell the user this once, as it is]\n"
+
+
+def register_advice(ctx, provider):
+    """The hook that brings the advice of a conversion (hermes_ingest.ADVICE) to the user, once a session: on its
+    first turn, as context of the user message (a memory provider has no line of its own on the screen)."""
+    if not hasattr(ctx, "register_hook"):
+        return
+
+    def advise(is_first_turn=False, **_kw):
+        advice = getattr(provider, "advice", "")
+        return {"context": ADVICE_HEAD + advice} if is_first_turn and advice else None
+    ctx.register_hook("pre_llm_call", advise)
 
 
 PREFETCH_HEAD = "Breadcrumbs from earlier sessions (expand with crumb(id, level)):\n"
@@ -259,16 +275,13 @@ class BreadcrumbsProvider(MemoryProvider):
         base_cfg = dials.config(self.home_root)
         self.scope_info = workdir.resolve(self.home_root, kwargs, base_cfg)  # the memory of this chat's folder
         self.root = self.scope_info["store"]
-        if kwargs.get("agent_context") in (None, "", "primary"):  # once: the copies of state.db's texts become locators
-            try:
-                from .hermes_ingest import relocate
-                roots = dict.fromkeys((self.home_root, self.root))
-                got = relocate([os.path.join(r, "store") for r in roots], os.path.join(self._home, "state.db"))
-                for r in roots:
-                    if os.path.join(r, "store") in got:
-                        self._log("relocate: %d copied blobs of state.db's texts dropped" % got[os.path.join(r, "store")], r)
-            except Exception as e:  # the store opens as it is: the copies stay until the next start
-                self._log("relocate: %s: %s" % (type(e).__name__, e))
+        self.advice = ""
+        if kwargs.get("agent_context") in (None, "", "primary"):  # a store from before 0.6.0: advise its conversion
+            from .hermes_ingest import ADVICE, old_stores
+            old = old_stores(self._home)
+            if old:
+                self.advice = ADVICE % (len(old), workdir.profile_of(self._home) or "default")
+                self._log(self.advice, self.home_root)
         self.store = Store(os.path.join(self.root, "store"))
         self.index = Index(os.path.join(self.root, "index.db"))
         self.refs = Refs(os.path.join(self.root, "refs"))

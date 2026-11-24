@@ -9,6 +9,7 @@ registration happen once, whichever import comes first.
                config_layers  (the config files of each profile and scope, for the explorer's settings: config_layers.py)
                groups         (the groups of profiles: what they share, and create/rename/delete/add/remove: groups.py)
                source:hermes  (the text of a crumb that points at a row of state.db: hermes_ingest.source)
+               find:hermes, vocab:hermes  (Hermes's own full-text index of state.db: hermes_ingest.find, .vocab)
     commands   ace ingest-hermes scopes seats seat no-vis  (scopes, seats, ace, the hide list)
                slot install-hermes  (the installers of the plugin into a Hermes profile)
     harness    hermes  (the entry of the harness table of core.py, with the source of its sessions for `ingest`, and its
@@ -397,9 +398,47 @@ def _config_layers(root):
     return config_layers.layers(root)
 
 
-def _source(store, loc):
+def _text(store, loc):
     from . import hermes_ingest
     return hermes_ingest.source(store, loc)
+
+
+def _find(root, query, k):
+    from . import hermes_ingest
+    return hermes_ingest.find(root, query, k)
+
+
+def _vocab(root, stems):
+    from . import hermes_ingest
+    return hermes_ingest.vocab(root, stems)
+
+
+def _add_convert(sub):
+    p = sub.add_parser("convert-hermes", help="once, with Hermes stopped: the stores of a profile from before 0.6.0 "
+                                              "drop their copies of state.db's texts (every id stays)")
+    p.add_argument("profile", nargs="?", default="default")
+
+
+def _convert(args, home):
+    from breadcrumbs import cli
+    from breadcrumbs.store import StoreBusy
+    from . import hermes_ingest
+    profile_home = cli.profile_home(args.profile)
+    roots = hermes_ingest.old_stores(profile_home)
+    if not roots:
+        print("breadcrumbs: no store of %s needs a conversion" % args.profile)
+        return 0
+    try:
+        got = hermes_ingest.convert(roots, os.path.join(profile_home, "state.db"))
+    except StoreBusy as e:
+        print("breadcrumbs: %s: stop Hermes (the gateway, every chat and /viz) and run this again" % e)
+        return 1
+    except RuntimeError as e:
+        print("breadcrumbs: %s" % e)
+        return 1
+    for root, (dropped, rows) in got.items():
+        print("%s: %d copied blobs dropped, %d index rows point at state.db" % (root, dropped, rows))
+    return 0
 
 
 def _setup(cmd):
@@ -418,7 +457,10 @@ if ports.layer("hermes", __file__):
     ports.give("ace_join", _ace_join)
     ports.give("config_layers", _config_layers)
     ports.give("groups", _groups)
-    ports.give("source:hermes", _source)
+    ports.give("source:hermes", _text)
+    ports.give("find:hermes", _find)
+    ports.give("vocab:hermes", _vocab)
+    ports.command("convert-hermes", _add_convert, _convert, after="pull")
     ports.command("ace", _add_ace, _ace, after="log")
     ports.command("ingest-hermes", _add_ingest, _ingest, after="pull")
     ports.command("slot", _add_slot, _slot, after="vault")

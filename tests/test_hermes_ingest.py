@@ -1,3 +1,4 @@
+from _hermes_fts import messages_fts
 import _hermes_scrub  # noqa: F401  (state.db is read through agent.redact: a stand-in where Hermes is absent)
 import json
 import os
@@ -14,7 +15,7 @@ from breadcrumbs_hermes.hermes_ingest import ingest_state_db
 from breadcrumbs.history import Refs
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import leaves, plain, step_text
-from breadcrumbs.store import Store
+from breadcrumbs.store import Store, StoreBusy, old as store_old
 from breadcrumbs.zoom import Zoom
 
 
@@ -23,6 +24,7 @@ def make_db(path):
     db.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, started_at REAL)")
     db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
                " content TEXT, tool_name TEXT, timestamp REAL)")
+    messages_fts(db)
     db.execute("INSERT INTO sessions VALUES ('s1', 'first session', 100), ('s2', NULL, 200)")
     rows = [("s1", "user", "build the crc32c module", None, 101),
             ("s1", "assistant", "I wrote crc32c.py with RFC 3720 vectors", None, 102),
@@ -101,6 +103,7 @@ class ScrubTest(unittest.TestCase):
         db.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, started_at REAL)")
         db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
                    " content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL)")
+        messages_fts(db)
         db.execute("INSERT INTO sessions VALUES ('s4', ?, 400)", ("key " + KEY,))
         calls = CALLS.replace("notes.txt", KEY)
         db.executemany("INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp)"
@@ -129,9 +132,10 @@ class ScrubTest(unittest.TestCase):
         ingest_state_db(self.db, self.store, self.index, self.refs)
         self.assertEqual(self.holding(KEY), [])
         masked = KEY[:6] + "..." + KEY[-4:]
-        self.assertTrue(self.holding("Here is my new OpenAI key %s remember it" % masked))
+        self.assertEqual(self.holding("OpenAI key"), [])  # not even the masked form: state.db keeps the text
         sess = get_crumb(self.store, self.refs.get("sess-s4"))
-        self.assertNotIn(KEY, sess.title)
+        self.assertNotIn("OpenAI", sess.title)
+        self.assertIn("Here is my new OpenAI key %s remember it" % masked, Zoom(self.store).render(sess.kids[0], 1.0))
         self.assertEqual(self.index.search(KEY[8:20]), [])
 
     def test_without_hermes_nothing_is_read(self):
@@ -156,6 +160,7 @@ class StepIngestTest(unittest.TestCase):
         db.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, started_at REAL)")
         db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
                    " content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL)")
+        messages_fts(db)
         db.execute("INSERT INTO sessions VALUES ('s3', 'notes', 300)")
         db.executemany("INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, tool_name, timestamp)"
                        " VALUES (?,?,?,?,?,?,?)",
@@ -231,34 +236,71 @@ class ImportTest(HermesIngestTest):
         self.assertIn(SOURCE_GONE.decode(), out)
         self.assertNotIn("RFC 3720", out)
 
-    def test_relocate_drops_the_copies_of_a_store_from_before_and_keeps_every_id(self):
+    def old_store(self):
+        """A store as a release before 0.6.0 wrote it: every text copied, its words in the index, no "format"."""
         home = os.path.join(self.tmp.name, "old")
         old = Store(os.path.join(home, "store"))
         index, refs = Index(os.path.join(home, "index.db")), Refs(os.path.join(home, "refs"))
-        def copied(r, scrub, db=None):  # the store of a release before: every text copied
+        def copied(r, scrub, db=None):
             row = _ROW(r, scrub, db)
             return row and dict(row, loc=None)
         with mock.patch.object(hermes_ingest, "_row", copied):
             ingest_state_db(self.db, old, index, refs)
         mine = put_text(old, b"a summary that only this store holds\n")
+        index.add("c-mine", "%s:0-1" % mine, "a summary that only this store holds", kind="sum")
         ids = set(old.ids())
         index.close()
         old.close()
-        copy = Store(os.path.join(home, "store"))
-        self.assertIsNotNone(copy.find(b"I wrote crc32c.py with RFC 3720 vectors"))
-        copy.close()
-        (dropped,) = hermes_ingest.relocate([os.path.join(home, "store")], self.db).values()
+        os.remove(os.path.join(home, "store", "format"))
+        return home, refs, mine, ids
+
+    def test_an_old_store_is_found_and_converted_once_keeping_every_id(self):
+        home, refs, mine, ids = self.old_store()
+        self.assertEqual(hermes_ingest.old_stores(self.tmp.name), [])  # this home has no breadcrumbs folder
+        self.assertTrue(store_old(os.path.join(home, "store")))
+        ((dropped, rows),) = hermes_ingest.convert([home], self.db).values()
         self.assertGreater(dropped, 0)
-        self.assertEqual(hermes_ingest.relocate([os.path.join(home, "store")], self.db), {})  # once
-        new = Store(os.path.join(home, "store"))
+        self.assertGreater(rows, 0)
+        self.assertEqual(hermes_ingest.convert([home], self.db), {})  # once
+        new, index = Store(os.path.join(home, "store")), Index(os.path.join(home, "index.db"))
         try:
             self.assertEqual(len(ids - set(new.ids())), dropped)
             self.assertIsNone(new.find(b"I wrote crc32c.py with RFC 3720 vectors"))
             sess = refs.get("sess-s1")
             self.assertIn("I wrote crc32c.py with RFC 3720 vectors", Zoom(new).render(sess, 1.0))
             self.assertEqual(get_text(new, mine), b"a summary that only this store holds\n")
+            index.db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.v USING fts5vocab('main', 't', 'row')")
+            terms = {t for (t,) in index.db.execute("SELECT term FROM temp.v")}
+            self.assertNotIn("vector", terms)  # the copied words left the index
+            self.assertIn("summari", terms)  # the store's own text stays searchable
         finally:
+            index.close()
             new.close()
+
+    def test_an_open_store_is_not_converted(self):
+        home, _refs, _mine, _ids = self.old_store()
+        held = Store(os.path.join(home, "store"))
+        try:
+            with self.assertRaises(StoreBusy):
+                hermes_ingest.convert([home], self.db)
+        finally:
+            held.close()
+        self.assertTrue(store_old(os.path.join(home, "store")))
+
+    def test_hermes_own_index_finds_the_rows_and_gives_the_counts(self):
+        hermes_ingest._close_all()
+        hermes_ingest._VOCAB.clear()
+        ingest_state_db(self.db, self.store, self.index, self.refs)
+        self.index.commit()
+        hits = self.index.search("vectors")
+        self.assertEqual([self.zoom_text(r) for _c, r, _s in hits], ["I wrote crc32c.py with RFC 3720 vectors"])
+        self.index._tokens = self.index._outside = None
+        self.index._fresh()
+        self.assertGreaterEqual(self.index._count("vector")[0], 1)
+
+    def zoom_text(self, ref):
+        doc, _, span = ref.partition(":")
+        return get_text(self.store, doc).decode()
 
 
 _ROW = hermes_ingest._row
@@ -276,6 +318,7 @@ class FamilyIngestTest(unittest.TestCase):
                    " title TEXT, started_at REAL NOT NULL)")
         db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
                    " content TEXT, tool_name TEXT, timestamp REAL)")
+        messages_fts(db)
         db.executemany("INSERT INTO sessions VALUES (?,?,?,?,?)",
                        [("lead", "cli", None, "the lead", 100), ("kid-a", "subagent", "lead", "part a", 110),
                         ("kid-b", "subagent", "lead", "part b", 120)])

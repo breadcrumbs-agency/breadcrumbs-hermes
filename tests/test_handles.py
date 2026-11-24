@@ -7,6 +7,7 @@ delegate_task call, in the entry of that child, so the model learns the id. With
 
 The fixture state.db has one parent (p1), three children of it (c1, c2, c3) and a session that is nobody's child (x1).
 c3 has one tool row with an empty result, so a store keeps no turn of it."""
+from _hermes_fts import messages_fts
 import _hermes_scrub  # noqa: F401  (state.db is read through agent.redact: a stand-in where Hermes is absent)
 import _scope_off  # noqa: F401  (the provider uses the default memory in any folder)
 import json
@@ -34,6 +35,7 @@ def make_state_db(path):
                " started_at REAL)")
     db.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,"
                " content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, timestamp REAL)")
+    messages_fts(db)
     db.executemany("INSERT INTO sessions VALUES (?,?,?,?,?)",
                    [("p1", "cli", None, "the parent", 100), ("c1", "subagent", "p1", None, 110),
                     ("c2", "subagent", "p1", "shelf", 111), ("c3", "subagent", "p1", None, 112),

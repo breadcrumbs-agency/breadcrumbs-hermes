@@ -234,6 +234,10 @@ def status(base: str, info: dict, more: bool = False) -> str:
         info["store"], "index.db")) else "  (empty: nothing is stored yet)"))
     for kind, root in info.get("up", ()):
         lines.append("  above   %s  (%s)" % (scope.short(root), kind))
+    from .hermes_ingest import ADVICE, old_stores
+    old = old_stores(os.path.dirname(base))
+    if old:
+        lines.append("  " + ADVICE % (len(old), profile_of(os.path.dirname(base)) or "default"))
     others = stores_all(base, info)
     if others:
         lines.append("  scopes with a memory:")

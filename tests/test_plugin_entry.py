@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The hooks that register() adds, in order: the two of the usage log (usage_log.register), then the one of the dial
 # family (hermes.register_handles). plugin.yaml lists the same three in provides_hooks.
-HOOKS = ["post_api_request", "post_auxiliary_call", "transform_tool_result"]
+HOOKS = ["post_api_request", "post_auxiliary_call", "transform_tool_result", "pre_llm_call"]
 
 
 class Ctx:
@@ -219,7 +219,7 @@ class RootPluginTest(unittest.TestCase):
             self.assertTrue(os.path.isdir(os.path.join(ROOT, "lib", "breadcrumbs_spacegraph")))
         else:
             self.assertEqual(project.get("dependencies"),
-                             ["breadcrumbs-common>=0.4.1,<0.5", "breadcrumbs-spacegraph>=0.4.1,<0.5"])
+                             ["breadcrumbs-common>=0.5.0,<0.6", "breadcrumbs-spacegraph>=0.5.0,<0.6"])
         self.assertNotIn("build-system", doc)
         self.assertFalse(any(project.get("optional-dependencies", {}).values()))
         self.assertFalse(any(doc.get("dependency-groups", {}).values()))

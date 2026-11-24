@@ -464,7 +464,7 @@ class UsageLogTest(unittest.TestCase):
         from breadcrumbs_hermes import hermes
         ctx = Ctx()
         hermes.register_plugin(ctx, mock.Mock())  # the dials register middleware, not a hook
-        self.assertEqual(list(ctx.hooks)[-3:-1], ["post_api_request", "post_auxiliary_call"])  # then the hook of the family
+        self.assertEqual(list(ctx.hooks)[-4:-2], ["post_api_request", "post_auxiliary_call"])  # then the hooks of the family and the advice
         ctx.hooks["post_api_request"](**api_kw())
         ctx.hooks["post_auxiliary_call"](**aux_kw())
         self.assertEqual(self.lines(), [API_LINE, AUX_LINE])

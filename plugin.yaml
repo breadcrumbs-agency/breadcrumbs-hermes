@@ -1,10 +1,10 @@
 name: breadcrumbs
-version: "0.5.0"
+version: "0.6.0"
 description: "Memory with exact provenance: every recalled line has a content address (CRC32C), one zoom level from 0 to 1 opens any session, BM25 recall, labeled tiny-model summaries, a memory for each git repository or folder (scopes; no profiles). One dependency: google-crc32c."
 author: "breadcrumbs-agency"
 homepage: https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin
 tags: [memory, context-engine, provenance, ipfs]
 license: MIT
 requires_hermes: ">=0.22.5"
-provides_hooks: [post_api_request, post_auxiliary_call, transform_tool_result]
+provides_hooks: [post_api_request, post_auxiliary_call, transform_tool_result, pre_llm_call]
 provides_middleware: [llm_request]

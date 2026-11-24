@@ -598,12 +598,17 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
   (`agent.redact.redact_for_egress`), so a key typed into a chat reads masked and is in no file of breadcrumbs.
   A row that Hermes deletes reads as "(source gone ...)", and its crumb stays. The session end and `sync_turn`
   read only the rows after the last one that a session crumb covers. Without Hermes importable, nothing of
-  `state.db` is read.
+  `state.db` is read. A crumb of such a row keeps its role as its title, no word of its text: a view shows
+  the first line as `state.db` gives it. Its words are in Hermes's own full-text index (`messages_fts`), not in
+  `index.db`: `crumb_find` asks that index for them, and the cue words and the zoom count them there.
 - It keeps text of its own only where nothing else holds it: the summaries that a model writes, a turn that
   Hermes handed over and that `state.db` does not hold, and a message of a request that is in no row (an
   injected context), each as Hermes masked it. A receipt and a fold keep ids and levels, no text.
-- A store from a release before this one held copies: at the first start of this release, the copies of texts
-  that `state.db` holds are dropped once (the file `relocated` in the store says so), and every id stays.
+- A store from a release before 0.6.0 holds copies (a store without the file `format`). It opens as it is, and
+  breadcrumbs advises its conversion: in `provider.log`, in `/scope`, and once on the first turn of a chat.
+  `python -m breadcrumbs convert-hermes PROFILE`, with Hermes stopped, drops the copies of the texts that
+  `state.db` holds, and their words in `index.db`, once for each store of that profile. Every id and every crumb
+  stay. It refuses a store that is open anywhere.
 - By default, breadcrumbs makes no network calls. It reads no credential files. It sends no telemetry. A
   slotted provider (see the slot) works as it did before, with its own network calls.
 - It replaces no class and no function of Hermes.
@@ -632,8 +637,8 @@ Each signal is a file (`ace.log`, `scope.json`) or a crumb (`rcpt`, `sum`) that 
   `memory.<name>` in `config.yaml`. `python -m breadcrumbs slot PROFILE` sets `memory.provider` through
   `hermes config set`.
 - The CLI command `ingest-hermes PROFILE` reads that profile's `state.db` (read-only). The memory provider
-  reads it after each turn, when a session ends and before `/viz` opens (the import into the profile's store), at
-  the first start of this release (relocate), and when the
+  reads it after each turn, when a session ends and before `/viz` opens (the import into the profile's store), to
+  open a crumb and to search (`messages_fts`), and when the
   dial `family` is on (it is off by default). With the dial on,
   after a delegation, the provider reads the child's session rows from `state.db`, read-only. It reads only
   the rows of that child, and adds them to the store of this profile as private crumbs that point at them.

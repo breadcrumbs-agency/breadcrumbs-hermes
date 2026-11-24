@@ -16,9 +16,11 @@ state.db keeps typed text as typed: Hermes masks secrets only on the way to a me
 spine is of the scrubbed text, and source() scrubs again on each read. Without Hermes, nothing is read.
 """
 
+import atexit
 import collections
 import inspect
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -173,6 +175,7 @@ def ingest_state_db(db_path, store, index, refs, roles=ROLES):
     return stats
 
 
+_COLS_OF = {}  # db -> the columns that source() reads (NULL for one that an older state.db lacks)
 _TEXTS = collections.OrderedDict()  # (db, message id) -> the bytes of its row: the texts that a render reads again
 _TEXTS_LOCK = threading.Lock()
 
@@ -193,11 +196,11 @@ def source(store, loc):
             _TEXTS.move_to_end(key)
             return _TEXTS[key]
     try:
-        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
-        try:
-            record = con.execute("SELECT %s FROM messages WHERE id = ?" % _cols(con), (int(place),)).fetchone()
-        finally:
-            con.close()
+        cols = _COLS_OF.get(db)
+        if cols is None:
+            have = {r[1] for r in _query(db, "PRAGMA table_info(messages)")}
+            cols = _COLS_OF[db] = ", ".join(c if c in have or c not in OPTIONAL else "NULL" for c in COLS)
+        record = _query(db, "SELECT %s FROM messages WHERE id = ?" % cols, (int(place),), one=True)
     except (sqlite3.Error, ValueError):
         return None
     row = _row(record, lambda t: t) if record else None
@@ -211,31 +214,51 @@ def source(store, loc):
     return got
 
 
-def relocate(store_paths, db_path):
-    """Once for each store (the file "relocated" in it says it ran): every text of it that a row of the state.db at
-    db_path holds, as it is or as Hermes's scrub gives it, gets that row's locator, and its copy is dropped
-    (lines.relocate). state.db is read once for all the stores, and a row is scrubbed at most once. Returns
-    {store path: blobs dropped} of the stores that ran; {} when state.db or Hermes is absent."""
-    from breadcrumbs.lines import relocate as relocate_store
-    todo = [p for p in dict.fromkeys(store_paths)
-            if os.path.isdir(p) and not os.path.exists(os.path.join(p, "relocated"))]
-    if not todo or not os.path.exists(db_path):
+def stores(home):
+    """The breadcrumbs folders of a Hermes profile home: its default memory and each scope's."""
+    base = os.path.join(home, "breadcrumbs")
+    out = [base]
+    scopes = os.path.join(base, "scopes")
+    if os.path.isdir(scopes):
+        out += [os.path.join(scopes, n) for n in sorted(os.listdir(scopes)) if os.path.isdir(os.path.join(scopes, n, "store"))]
+    return [r for r in out if os.path.isdir(os.path.join(r, "store"))]
+
+
+def old_stores(home):
+    """The breadcrumbs folders of the profile at home whose store a release before this one wrote (store.old)."""
+    from breadcrumbs.store import old
+    return [r for r in stores(home) if old(os.path.join(r, "store"))]
+
+
+ADVICE = ("breadcrumbs: %d store(s) of this profile hold copies of state.db's texts (a release before 0.6.0). "
+          "Convert them once, with Hermes stopped: python -m breadcrumbs convert-hermes %s")
+
+
+def convert(roots, db_path):
+    """Convert the old stores of the breadcrumbs folders roots (store.old): every text that a row of the state.db at
+    db_path holds, as it is or as Hermes's scrub gives it, gets that row's locator and loses its copy (lines.relocate),
+    and the index drops its words (Index.relocate). Every id and every crumb stay. state.db is read once, a row is
+    scrubbed at most once. RuntimeError without Hermes's scrub; StoreBusy (breadcrumbs.store) when a store is open.
+    Returns {root: (blobs dropped, index rows located)}."""
+    from breadcrumbs.index import Index
+    from breadcrumbs.lines import get_lines, relocate as relocate_store
+    from breadcrumbs.store import Store, old
+    todo = [r for r in dict.fromkeys(roots) if old(os.path.join(r, "store"))]
+    if not todo:
         return {}
-    try:
-        scrub = egress_scrub()
-    except RuntimeError:
-        return {}
-    db = _db_name(db_path, type("S", (), {"path": todo[0]})())
-    con = sqlite3.connect("file:%s?mode=ro" % os.path.abspath(db_path), uri=True)
-    try:
-        records = con.execute("SELECT %s FROM messages ORDER BY id" % _cols(con)).fetchall()
-    finally:
-        con.close()
+    scrub = egress_scrub()
     rows, masked = [], {}
-    for record in records:
-        row = _row(record, lambda t: t, db)
-        if row is not None:
-            rows.append((row["loc"], row_text(row).encode("utf-8"), record))
+    if os.path.exists(db_path):
+        db = _db_name(db_path, type("S", (), {"path": os.path.join(todo[0], "store")})())
+        con = sqlite3.connect("file:%s?mode=ro" % os.path.abspath(db_path), uri=True)
+        try:
+            records = con.execute("SELECT %s FROM messages ORDER BY id" % _cols(con)).fetchall()
+        finally:
+            con.close()
+        for record in records:
+            row = _row(record, lambda t: t, db)
+            if row is not None:
+                rows.append((row["loc"], row_text(row).encode("utf-8"), record))
 
     def scrubbed(loc, record):
         if loc not in masked:
@@ -243,9 +266,90 @@ def relocate(store_paths, db_path):
         return masked[loc]
 
     out = {}
-    for path in todo:
-        out[path] = relocate_store(path, ((loc, (raw, lambda l=loc, r=record: scrubbed(l, r)))
-                                          for loc, raw, record in rows))
-        with open(os.path.join(path, "relocated"), "w", encoding="utf-8") as f:
-            f.write("%d\n" % out[path])
+    for root in todo:
+        located, dropped = relocate_store(os.path.join(root, "store"),
+                                          ((loc, (raw, lambda l=loc, r=record: scrubbed(l, r))) for loc, raw, record in rows))
+        store = Store(os.path.join(root, "store"), readonly=True)
+        index = Index(os.path.join(root, "index.db"))
+        try:
+            def text_of(ref):
+                doc, _, span = ref.partition(":")
+                a, _, b = span.partition("-")
+                return b"".join(get_lines(store, doc, int(a), int(b))).decode("utf-8", "replace")
+            out[root] = (dropped, index.relocate(located, text_of))
+        finally:
+            index.close()
+            store.close()
     return out
+
+
+_CONS = {}  # db -> one read-only connection for the process: a view reads thousands of rows (used under _CONS_LOCK)
+_CONS_LOCK = threading.Lock()
+
+
+def _query(db, sql, args=(), one=False):
+    """The rows of sql on the read-only connection to db (one: the first row or None)."""
+    with _CONS_LOCK:
+        con = _CONS.get(db)
+        if con is None:
+            con = _CONS[db] = sqlite3.connect("file:%s?mode=ro" % db, uri=True, check_same_thread=False)
+        cur = con.execute(sql, args)
+        return cur.fetchone() if one else cur.fetchall()
+
+
+def _close_all():
+    with _CONS_LOCK:
+        for con in _CONS.values():
+            con.close()
+        _CONS.clear()
+
+
+atexit.register(_close_all)
+
+
+def find(root, query, k):
+    """The port "find:hermes": [(locator, -bm25)] of Hermes's own full-text index (messages_fts) of the state.db of the
+    store at root, for an FTS5 query (Index._outside_hits: the porter stems of the words as prefixes, OR-ed). Up to
+    5000 rows: the store of a scope holds only some sessions of state.db."""
+    db = locate(root)
+    if not os.path.isfile(db):
+        return []
+    try:
+        got = _query(db, "SELECT rowid, bm25(messages_fts) FROM messages_fts WHERE messages_fts MATCH ? "
+                         "ORDER BY bm25(messages_fts) LIMIT ?", (query, max(20 * k, 5000)))
+    except sqlite3.Error:
+        return []
+    return [("hermes:%d" % rid, -s) for rid, s in got]
+
+
+_VOCAB = {}  # db -> ((size, mtime), the answer of vocab)
+
+
+def vocab(root, stems):
+    """The port "vocab:hermes": (rows, tokens, terms, count(stem)) of Hermes's own index (messages_fts) of the state.db
+    of the store at root, its words made into the stems of the breadcrumbs index by stems(words); read again when
+    state.db changes size by more than 1%."""
+    db = locate(root)
+    try:
+        size = os.path.getsize(db)
+    except OSError:
+        return None
+    hit = _VOCAB.get(db)
+    if hit is not None and abs(size - hit[0]) <= 0.01 * hit[0]:
+        return hit[1]
+    try:
+        _query(db, "CREATE VIRTUAL TABLE IF NOT EXISTS temp.bc_vocab USING fts5vocab('main', 'messages_fts', 'row')")
+        terms = _query(db, "SELECT term, doc, cnt FROM temp.bc_vocab")
+        rows = _query(db, "SELECT count(*) FROM messages_fts_docsize", one=True)[0]
+    except sqlite3.Error:
+        return None
+    counts = {}
+    words = [t for t, _d, _c in terms]
+    for i in range(0, len(words), 5000):
+        for stem, j in stems(words[i:i + 5000]):
+            _t, d, c = terms[i + j]
+            got = counts.get(stem, (0, 0))
+            counts[stem] = (got[0] + d, got[1] + c)
+    answer = (rows, sum(c for _t, _d, c in terms), len(counts), lambda stem: counts.get(stem, (0, 0)))
+    _VOCAB[db] = (size, answer)
+    return answer
