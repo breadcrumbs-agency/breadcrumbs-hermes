@@ -113,9 +113,12 @@ class StoreTest(unittest.TestCase):
         with open(pack, "r+b") as f:
             f.seek(os.path.getsize(pack) - 3)
             f.write(b"\x00\x01\x02")
-        with Store(self.dir) as s:
+        with Store(self.dir, readonly=True) as s:  # a reader checks the CRC
             with self.assertRaises(ValueError):
                 s.get(i)
+        with Store(self.dir) as s:  # a writer cuts a last block that fails its CRC (a power loss): the blob is gone
+            self.assertEqual(s.cut, 1)
+            self.assertNotIn(i, set(s.ids()))
 
     def test_compresses_repetitive_data(self):
         raw = 0
