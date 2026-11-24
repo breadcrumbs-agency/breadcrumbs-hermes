@@ -29,6 +29,7 @@ from breadcrumbs.horizon import Controller, decay, split
 from breadcrumbs.index import Index
 from breadcrumbs.ingest import leaves, put_rows, put_tree, put_turn
 from breadcrumbs.lines import put_text, split_lines
+from breadcrumbs.mask import mask
 from breadcrumbs.reader import Reader
 from .slot import FIELD_PREFIX, Slot, stored_values
 from breadcrumbs.store import Store
@@ -900,7 +901,7 @@ class BreadcrumbsProvider(MemoryProvider):
                 "rate": round(self.ctl.rate, 4), "band": [float(x) for x in self.ctl.band],
                 "prev": self.refs.get(name) or ""}
         if q.strip():
-            meta["q"] = " ".join(q.split())[:120]
+            meta["q"] = mask(" ".join(q.split()))[:120]
         if self._turn_budget():  # only with a turn budget, so receipts without one do not change
             meta.update(cap=bool(cap), used=self._spent[2] if self._spent[:2] == (sid, meta["turn"]) else 0,
                         tb=self._turn_budget(), want=int(nbytes if want is None else want))
