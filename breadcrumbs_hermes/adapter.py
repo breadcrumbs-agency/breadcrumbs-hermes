@@ -473,4 +473,4 @@ if ports.layer("hermes", __file__):
     ports.harness("hermes", "Hermes", ("hermes",), _setup, order=10, source=_source,
                   icon=ports.image(__file__, "icon.png"), settings=_settings,
                   repository="https://github.com/breadcrumbs-agency/breadcrumbs-hermes",
-                  pages="https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/")
+                  pages="https://breadcrumbs-agency.github.io/breadcrumbs-hermes/")

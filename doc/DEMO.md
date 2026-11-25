@@ -64,6 +64,6 @@ with `context.engine breadcrumbs`.
 
 | Film | What it shows |
 |---|---|
-| [To Scale](https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/film/to-scale.mp4) | Each measured head-to-head, each bar on one linear axis at its true ratio. |
+| [To Scale](https://breadcrumbs-agency.github.io/breadcrumbs-hermes/film/to-scale.mp4) | Each measured head-to-head, each bar on one linear axis at its true ratio. |
 | [One Tool, Two Parts](https://www.youtube.com/watch?v=a05N4Ju2-DM) | `crumb_find` and `crumb`, live on a demo memory. |
 | [The First Explorer](https://www.youtube.com/watch?v=D3Mdd_eLjn8) | Each box is a session. Sessions that share a cue word pull together. |

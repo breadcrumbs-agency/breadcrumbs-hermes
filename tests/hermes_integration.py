@@ -398,7 +398,7 @@ def scan_check():
         shutil.copytree(REPO, copy, ignore=skip)
         for pages in ("doc", "docs"):  # pages and films ship in no bundle (breadcrumbs/tools/bundle.py): scan what ships
             shutil.rmtree(os.path.join(copy, pages), ignore_errors=True)
-        result = scan_plugin(Path(copy), source="https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin.git")
+        result = scan_plugin(Path(copy), source="https://github.com/breadcrumbs-agency/breadcrumbs-hermes.git")
     high = ["%s %s:%s" % (f.severity, f.file, f.line) for f in result.findings if f.severity in ("high", "critical")]
     assert result.verdict == "safe", (result.verdict, high)
     assert should_allow_plugin_install(result)[0] is True

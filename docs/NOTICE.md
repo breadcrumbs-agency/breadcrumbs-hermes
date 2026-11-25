@@ -1,7 +1,7 @@
 # Notice
 
 This site belongs to breadcrumbs, a memory and context engine plugin for the Hermes agent:
-https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin
+https://github.com/breadcrumbs-agency/breadcrumbs-hermes
 
 breadcrumbs is MIT-licensed (see `LICENSE` in the repository). Parts of this site come from other projects.
 Each keeps its own license. This site is the branch `gh-pages` of the repository: its files are its source.

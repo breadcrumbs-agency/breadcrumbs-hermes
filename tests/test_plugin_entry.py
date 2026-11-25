@@ -197,7 +197,7 @@ class RootPluginTest(unittest.TestCase):
     def test_the_manifest_names_the_author_the_homepage_and_the_tags(self):
         m = manifest()
         self.assertEqual(m["author"], '"breadcrumbs-agency"')
-        self.assertEqual(m["homepage"], "https://github.com/breadcrumbs-agency/hermes-breadcrumb-plugin")
+        self.assertEqual(m["homepage"], "https://github.com/breadcrumbs-agency/breadcrumbs-hermes")
         self.assertEqual([t.strip() for t in m["tags"].strip("[]").split(",")],
                          ["memory", "context-engine", "provenance", "ipfs"])
         self.assertEqual(m["license"], "MIT")

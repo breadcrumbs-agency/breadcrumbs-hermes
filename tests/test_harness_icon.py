@@ -28,7 +28,7 @@ class HermesIcon(unittest.TestCase):
         entry = self.entry()
         self.assertTrue(callable(entry["settings"]))
         self.assertEqual(entry["repository"], "https://github.com/breadcrumbs-agency/breadcrumbs-hermes")
-        self.assertEqual(entry["pages"], "https://breadcrumbs-agency.github.io/hermes-breadcrumb-plugin/")
+        self.assertEqual(entry["pages"], "https://breadcrumbs-agency.github.io/breadcrumbs-hermes/")
         from breadcrumbs_spacegraph import harness
         me = next(r for r in harness.table() if r["key"] == "hermes")
         self.assertEqual((me["repository"], me["pages"]), (entry["repository"], entry["pages"]))
